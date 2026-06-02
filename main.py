@@ -2633,10 +2633,54 @@ def text_delta_from_chat_chunk(data):
         return "".join(parts)
     return str(content) if content else ""
 
+def image_result_from_url_value(value):
+    if not isinstance(value, str) or not value:
+        return None
+    if value.startswith("data:image/") and ";base64," in value:
+        header, encoded = value.split(";base64,", 1)
+        return {"type": "b64", "value": encoded, "mime_type": header.replace("data:", "", 1) or "image/png"}
+    return {"type": "url", "value": value}
+
+def image_from_chat_content(content):
+    if isinstance(content, list):
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            image_url = item.get("image_url")
+            if isinstance(image_url, dict) and image_url.get("url"):
+                return image_result_from_url_value(image_url["url"])
+            for key in ("url", "image_url", "output_url", "b64_json"):
+                value = item.get(key)
+                if isinstance(value, str) and value:
+                    if key == "b64_json":
+                        return {"type": "b64", "value": value}
+                    return image_result_from_url_value(value)
+    if isinstance(content, str):
+        data_match = re.search(r"(data:image/[^\s\"'<>]+)", content)
+        if data_match:
+            return image_result_from_url_value(data_match.group(1))
+        url_match = re.search(r"(https?://[^\s\"'<>]+)", content)
+        if url_match:
+            return {"type": "url", "value": url_match.group(1).rstrip(".,)")}
+    return None
+
 def sse_event(data):
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 def extract_image(data):
+    if isinstance(data, dict):
+        data = unwrap_apimart_response(data)
+    if isinstance(data, dict):
+        choices = data.get("choices") or []
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            message = choice.get("message") or {}
+            if not isinstance(message, dict):
+                continue
+            image = image_from_chat_content(message.get("content"))
+            if image:
+                return image
     candidates = data.get("candidates") if isinstance(data, dict) else None
     if isinstance(candidates, list):
         for candidate in candidates:
@@ -2699,6 +2743,23 @@ def extract_task_id(data):
 def images_api_unsupported(response):
     text = str(getattr(response, "text", "") or "").lower()
     return "images api is not supported" in text or "not supported for this platform" in text
+
+def is_chat_completions_endpoint(url: str) -> bool:
+    return str(url or "").strip().rstrip("/").endswith("/chat/completions")
+
+def image_generation_uses_chat_completions(provider, model: str, gen_url: str) -> bool:
+    if is_chat_completions_endpoint(gen_url):
+        return True
+    value = str(model or "").strip().lower()
+    return provider_protocol(provider) == "openai" and value.startswith("firefly-")
+
+def image_chat_completions_url(provider, gen_url: str) -> str:
+    if is_chat_completions_endpoint(gen_url):
+        return gen_url
+    base_url = str((provider or {}).get("base_url") or AI_BASE_URL).strip().rstrip("/")
+    if base_url.endswith("/v1"):
+        return f"{base_url}/chat/completions"
+    return f"{base_url}/v1/chat/completions" if base_url else ""
 
 def provider_protocol(provider):
     return str((provider or {}).get("protocol") or "openai").strip().lower()
@@ -4135,6 +4196,26 @@ def reference_to_data_url(ref, max_size=None):
     with open(path, "rb") as f:
         encoded = base64.b64encode(f.read()).decode("ascii")
     return f"data:{content_type_for_path(path)};base64,{encoded}"
+
+def chat_image_reference_url(ref, max_size=1536):
+    original = str((ref or {}).get("url") or "").strip()
+    public_url = local_asset_public_url(original)
+    if public_url:
+        return public_url
+    value = reference_to_data_url(ref, max_size=max_size)
+    if isinstance(value, str) and value.startswith(("/output/", "/assets/")):
+        return ""
+    if isinstance(value, str) and (value.startswith(("file:", "blob:")) or re.match(r"^[a-zA-Z]:[\\/]", value)):
+        return ""
+    return value
+
+def image_chat_content(prompt, refs, max_size=1536):
+    content = [{"type": "text", "text": prompt}]
+    for ref in (refs or [])[:16]:
+        url = chat_image_reference_url(ref, max_size=max_size)
+        if url:
+            content.append({"type": "image_url", "image_url": {"url": url}})
+    return content
 
 def media_reference_to_url(value, max_image_size=None):
     if not isinstance(value, str) or not value:
@@ -5820,9 +5901,24 @@ async def generate_ai_image(prompt, size, quality, model, reference_images=None,
     refs = [ref for ref in (reference_images or []) if ref.get("url")]
     mask_refs = [ref for ref in refs if str(ref.get("role") or "").strip().lower() == "mask" or str(ref.get("name") or "").lower().endswith("_mask.png")]
     image_refs = [ref for ref in refs if ref not in mask_refs]
+    use_chat_completions = image_generation_uses_chat_completions(provider, model, gen_url)
     request_timeout = httpx.Timeout(connect=20.0, read=1800.0, write=120.0, pool=20.0) if (is_gpt2 or is_apimart) else AI_REQUEST_TIMEOUT
     async with httpx.AsyncClient(timeout=request_timeout) as client:
         response = None
+        async def post_image_chat_completions():
+            content = image_chat_content(prompt, image_refs, max_size=1536)
+            body = {
+                "model": model,
+                "messages": [{"role": "user", "content": content}],
+            }
+            if is_apimart:
+                body["stream"] = False
+            return await client.post(
+                image_chat_completions_url(provider, gen_url),
+                headers=api_headers(provider=provider),
+                json=body,
+            )
+
         async def post_openai_edits(edit_files=None):
             data = {"model": model, "prompt": prompt, "size": size}
             if quality:
@@ -5834,7 +5930,9 @@ async def generate_ai_image(prompt, size, quality, model, reference_images=None,
                 files=edit_files if edit_files is not None else {},
             )
 
-        if is_apimart:
+        if use_chat_completions:
+            response = await post_image_chat_completions()
+        elif is_apimart:
             apimart_size, resolution = apimart_size_resolution(size)
             # APIMart 的 GPT-Image-2 图生图仍走 /images/generations，
             # 通过 image_urls 传参考图，不使用 OpenAI multipart /images/edits。
