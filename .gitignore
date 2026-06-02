@@ -1,0 +1,41 @@
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+API/.env
+
+# Python caches and local embedded dependencies
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+python/Lib/
+python/Scripts/
+
+# Application runtime state
+data/
+output/
+history.json
+global_config.json
+assets/input/
+assets/output/
+assets/library/
+workflows/custom/
+
+# Local agent/tool state
+.omo/
+.opencode/
+
+# Node/tooling caches
+node_modules/
+.npm/
+.pnpm-store/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
