@@ -5,7 +5,7 @@ metadata:
   name: Infinite Canvas
 spec:
   description: AI creative canvas with ComfyUI, OpenAI-compatible APIs, APIMart, Volcengine, ModelScope, and local asset workflows.
-  icon: https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main/%E8%B5%9E%E8%B5%8F.png
+  icon: https://raw.githubusercontent.com/jingjie1135/OhMyCanvas/main/%E8%B5%9E%E8%B5%8F.png
   tags:
     - AI
     - Tool
@@ -22,7 +22,7 @@ spec:
 
     ## What this template deploys
 
-    - One Git service from `hero8152/Infinite-Canvas`.
+    - One Git service from `jingjie1135/OhMyCanvas`.
     - HTTP port `3000` bound to the domain selected during deployment.
     - Persistent volumes for runtime configuration, generated media, uploaded assets, conversations, canvases, and custom workflows.
 
@@ -52,13 +52,13 @@ spec:
       ram: 4
   services:
     - name: infinite-canvas
-      icon: https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main/%E8%B5%9E%E8%B5%8F.png
+      icon: https://raw.githubusercontent.com/jingjie1135/OhMyCanvas/main/%E8%B5%9E%E8%B5%8F.png
       template: GIT
       domainKey: PUBLIC_DOMAIN
       spec:
         source:
           source: GITHUB
-          repo: 1235082631
+          repo: 1257591912
           branch: main
         ports:
           - id: web
@@ -99,7 +99,7 @@ localization:
     readme: |-
       # Zeabur 部署 Infinite Canvas
 
-      这个模板会从 `hero8152/Infinite-Canvas` 部署一个 FastAPI 服务，并把 HTTP 端口 `3000` 绑定到你选择的 Zeabur 域名。
+      这个模板会从 `jingjie1135/OhMyCanvas` 部署一个 FastAPI 服务，并把 HTTP 端口 `3000` 绑定到你选择的 Zeabur 域名。
 
       ## 模板包含
 
