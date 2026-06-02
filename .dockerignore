@@ -1,0 +1,29 @@
+.git
+.omo
+__pycache__/
+*.py[cod]
+*.pyo
+*.log
+.env
+**/.env
+
+# Local bundled/runtime Python on Windows
+python/
+
+# User/runtime state. Zeabur mounts these as persistent volumes.
+API/
+assets/input/
+assets/output/
+assets/library/
+data/
+output/
+history.json
+global_config.json
+
+# Local package/cache artifacts
+node_modules/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
