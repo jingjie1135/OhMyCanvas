@@ -29,7 +29,7 @@
                 --studio-ui-scale: 1;
             }
             html.studio-ui-scaled body:not(.studio-scale-host) {
-                width: calc(100vw / var(--studio-ui-scale)) !important;
+                width: calc(100% / var(--studio-ui-scale)) !important;
                 min-height: calc(100vh / var(--studio-ui-scale)) !important;
                 zoom: var(--studio-ui-scale);
             }
@@ -39,7 +39,7 @@
             html.studio-ui-scaled body:not(.studio-scale-host) > .app-shell,
             html.studio-ui-scaled body:not(.studio-scale-host) > .shell,
             html.studio-ui-scaled body:not(.studio-scale-host) > .asset-page {
-                width: calc(100vw / var(--studio-ui-scale)) !important;
+                width: calc(100% / var(--studio-ui-scale)) !important;
             }
             html.studio-ui-scaled body:not(.studio-scale-host) > .app-shell,
             html.studio-ui-scaled body:not(.studio-scale-host) > .shell {

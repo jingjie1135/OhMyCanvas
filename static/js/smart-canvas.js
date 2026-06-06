@@ -56,6 +56,7 @@ const promptTemplateBody = document.getElementById('promptTemplateBody');
 const composerTemplateBtn = document.getElementById('composerTemplateBtn');
 let minimapViewport = document.getElementById('minimapViewport');
 let canvas = null;
+let canvasUsesConnections = true;
 let nodes = [];
 let selectedId = '';
 let selectedIds = [];
@@ -82,6 +83,7 @@ let assetLibraryOpen = false;
 let assetTab = 'image';
 let activeAssetCategoryId = '';
 let activeAssetLibraryId = '';
+let activeWorkflowAssetCategoryId = '';
 let mentionSource = 'input';
 let mentionAssetCategoryId = '';
 let assetLibraryUpdatedAt = 0;
@@ -1094,6 +1096,19 @@ function rhActiveFields(sourceSettings=settings){
     }
     fields = fields.filter(f => f.enabled === true);
     return sortRunningHubFields(fields);
+}
+function runningHubRunNeedsPrompt(sourceSettings=settings){
+    if((sourceSettings || settings).engine !== 'runninghub') return true;
+    const fields = rhActiveFields(sourceSettings);
+    const promptFields = fields.filter(field => rhFieldRole(field) === 'prompt');
+    if(!promptFields.length) return false;
+    return promptFields.some(field => field.required === true && !rhDefaultValue(field).trim());
+}
+function smartRunNeedsPrompt(sourceSettings=settings){
+    sourceSettings = sourceSettings || settings;
+    if(sourceSettings.engine === 'runninghub') return runningHubRunNeedsPrompt(sourceSettings);
+    if(sourceSettings.engine === 'comfy' && sourceSettings.comfyMode === 'enhance') return false;
+    return true;
 }
 function sortRunningHubFields(fields){
     return [...(fields || [])].sort((a, b) => {
@@ -2792,15 +2807,19 @@ function promptTemplateItems(){
             libraryId:activeLibrary.id
         }));
     }
-    const hidden = new Set(promptTemplateOverrides.hiddenBuiltinIds || []);
-    const builtins = builtinPromptTemplates
-        .filter(t => !hidden.has(t.id))
-        .map(t => ({...t, ...(promptTemplateOverrides.editedBuiltins?.[t.id] || {}), builtin:true}));
+    // 系统库的条目同样走后端（/api/prompt-libraries），与素材库管理共用一套数据。
+    // 这样画布里修改/删除系统提示词会实时同步，不再依赖各端不互通的 localStorage 覆盖。
+    // 仍保留 builtin:true 用于“内置”标签与完整提示词（含负向/参数）的展示。
+    const source = Array.isArray(activeLibrary.items) && activeLibrary.items.length ? activeLibrary.items : builtinPromptTemplates;
+    const builtins = source
+        .filter(t => t?.id && t?.positive)
+        .map(t => ({...t, sourceId:t.id, builtin:true, remote:true, libraryId:'system'}));
     const mine = promptPresets.map(p => ({
         id:`mine:${p.id}`,
         sourceId:p.id,
         name:p.name || tr('smart.promptPresetUnnamed'),
-        category:p.category || 'mine',
+        // 系统库分组以后端为准（custom=“我的”），本地旧预设归到 custom 分组下展示，避免无对应标签。
+        category:(p.category && p.category !== 'mine') ? p.category : 'custom',
         scene:'我的提示词预设',
         positive:p.text || '',
         negative:'',
@@ -2836,14 +2855,26 @@ function promptTemplateSearchText(template){
         template?.negative
     ].join(' ').toLowerCase();
 }
+function activePromptTemplateGroups(){
+    const lib = activePromptLibrary();
+    // 系统库的分组也以后端 categories 为准，与素材库管理共用同一份分组数据（可重命名/删除并同步）。
+    const fromLib = Array.isArray(lib?.categories) ? lib.categories.filter(c => c?.id && c?.name) : [];
+    if(fromLib.length) return fromLib;
+    if(!lib || lib.id === 'system') return promptTemplateGroups;
+    return [];
+}
 function promptTemplateCategoryLabel(category){
     if(category === 'all') return tr('smart.tplAll');
+    // 分组名优先以后端 categories 为准（含内置分组重命名），保证两端显示一致。
+    const fromGroups = activePromptTemplateGroups().find(g => g.id === category)?.name;
+    if(fromGroups) return fromGroups;
     const builtin = {
         view:tr('smart.tplCatView'),
         storyboard:tr('smart.tplCatStoryboard'),
         character:tr('smart.tplCatCharacter'),
         product:tr('smart.tplCatProduct'),
         lighting:tr('smart.tplCatLighting'),
+        custom:tr('smart.tplCatMine'),
         mine:tr('smart.tplCatMine')
     };
     return builtin[category] || promptTemplateGroups.find(g => g.id === category)?.name || category;
@@ -2972,7 +3003,8 @@ function renderPromptTemplatePanel(options={}){
     const scrollSnapshot = options.preserveScroll === false ? null : promptTemplateScrollSnapshot();
     const query = String(promptTemplateSearch?.value || '').trim().toLowerCase();
     const allTemplates = promptTemplateItems();
-    const categories = [{id:'all', name:tr('smart.tplAll')}, ...promptTemplateGroups.map(group => ({...group, name:promptTemplateCategoryLabel(group.id)}))];
+    const activeGroups = activePromptTemplateGroups();
+    const categories = [{id:'all', name:tr('smart.tplAll')}, ...activeGroups.map(group => ({...group, name:promptTemplateCategoryLabel(group.id)}))];
     const groupCounts = allTemplates.reduce((map, item) => {
         map[item.category || 'mine'] = (map[item.category || 'mine'] || 0) + 1;
         return map;
@@ -2990,14 +3022,14 @@ function renderPromptTemplatePanel(options={}){
                 </div>
             </div>
             <div class="prompt-template-group-list">
-                ${promptTemplateGroups.map(group => `
-                    <div class="prompt-template-group-row ${['view','storyboard','character','product','lighting','mine'].includes(group.id) ? '' : 'has-delete'}">
+                ${activeGroups.map(group => `
+                    <div class="prompt-template-group-row has-delete">
                         <button type="button" class="group-name ${group.id === promptTemplateCategory ? 'active' : ''}" data-template-cat="${escapeHtml(group.id)}">
                             <span>${escapeHtml(promptTemplateCategoryLabel(group.id))}</span>
                             <small>${groupCounts[group.id] || 0}</small>
                         </button>
                         <button type="button" class="group-tool" data-template-cat-edit="${escapeHtml(group.id)}" title="${escapeAttr(tr('smart.tplRename'))}"><i data-lucide="pencil"></i></button>
-                        ${['view','storyboard','character','product','lighting','mine'].includes(group.id) ? '' : `<button type="button" class="group-tool danger" data-template-cat-delete="${escapeHtml(group.id)}" title="${escapeAttr(tr('common.delete'))}"><i data-lucide="trash-2"></i></button>`}
+                        <button type="button" class="group-tool danger" data-template-cat-delete="${escapeHtml(group.id)}" title="${escapeAttr(tr('common.delete'))}"><i data-lucide="trash-2"></i></button>
                     </div>
                 `).join('')}
             </div>
@@ -3028,7 +3060,8 @@ function renderPromptTemplatePanel(options={}){
     const target = promptTemplatePanel.dataset.target || 'node';
     const node = nodes.find(n => n.id === promptTemplatePanel.dataset.nodeId);
     const activeLibrary = activePromptLibrary();
-    const canEditCurrentLibrary = activeLibrary.id !== 'system' && !activeLibrary.readonly;
+    // 系统库 readonly=false，其条目也可编辑/删除（经后端持久化），因此只看 readonly。
+    const canEditCurrentLibrary = !activeLibrary.readonly;
     const editMode = Boolean(promptTemplateEditing && selectedPreset);
     promptTemplateBody.innerHTML = `
         <div class="prompt-template-list">
@@ -3054,8 +3087,8 @@ function renderPromptTemplatePanel(options={}){
                     </div>
                     ${editMode ? '' : `
                         <div class="prompt-template-icon-actions">
-                            <button type="button" ${selected?.builtin || !canEditCurrentLibrary ? 'disabled' : ''} data-template-edit title="${escapeAttr(tr('smart.tplEditTemplate'))}"><i data-lucide="pencil"></i><span>${escapeHtml(tr('common.edit'))}</span></button>
-                            <button type="button" ${selected?.builtin || !canEditCurrentLibrary ? 'disabled' : ''} class="danger" data-template-delete title="${escapeAttr(tr('smart.tplDeleteTemplate'))}"><i data-lucide="trash-2"></i><span>${escapeHtml(tr('common.delete'))}</span></button>
+                            <button type="button" ${!canEditCurrentLibrary ? 'disabled' : ''} data-template-edit title="${escapeAttr(tr('smart.tplEditTemplate'))}"><i data-lucide="pencil"></i><span>${escapeHtml(tr('common.edit'))}</span></button>
+                            <button type="button" ${!canEditCurrentLibrary ? 'disabled' : ''} class="danger" data-template-delete title="${escapeAttr(tr('smart.tplDeleteTemplate'))}"><i data-lucide="trash-2"></i><span>${escapeHtml(tr('common.delete'))}</span></button>
                         </div>
                     `}
                 </div>
@@ -3065,7 +3098,7 @@ function renderPromptTemplatePanel(options={}){
                     <input data-template-edit-name value="${escapeAttr(selectedPreset.name || '')}" placeholder="${escapeAttr(tr('smart.tplName'))}">
                     <label>${escapeHtml(tr('smart.tplGroup'))}</label>
                     <select data-template-edit-category>
-                        ${promptTemplateGroups.map(group => `<option value="${escapeAttr(group.id)}" ${group.id === (selectedPreset.category || selected?.category || 'mine') ? 'selected' : ''}>${escapeHtml(promptTemplateCategoryLabel(group.id))}</option>`).join('')}
+                        ${activeGroups.map(group => `<option value="${escapeAttr(group.id)}" ${group.id === (selectedPreset.category || selected?.category || 'mine') ? 'selected' : ''}>${escapeHtml(promptTemplateCategoryLabel(group.id))}</option>`).join('')}
                     </select>
                     <label>${escapeHtml(tr('smart.tplContent'))}</label>
                     <textarea data-template-edit-text placeholder="${escapeAttr(tr('smart.tplContent'))}">${escapeHtml(selectedPreset.text || '')}</textarea>
@@ -3111,16 +3144,20 @@ function syncComposerTemplateButton(){
     composerTemplateBtn.classList.toggle('active', active);
     composerTemplateBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
 }
-function openPromptTemplatePanel(nodeId='', templateId='', options={}){
+async function openPromptTemplatePanel(nodeId='', templateId='', options={}){
     if(!promptTemplatePanel) return;
     const target = options.target === 'composer' ? 'composer' : 'node';
     promptTemplatePanel.dataset.target = target;
     promptTemplatePanel.dataset.nodeId = nodeId || '';
     if(promptTemplatePanel.parentElement !== shell) shell.appendChild(promptTemplatePanel);
     if(templateId) promptTemplateSelectedId = templateId;
-    if(!promptTemplateSelectedId) promptTemplateSelectedId = promptTemplateItems()[0]?.id || '';
-    renderPromptTemplatePanel();
     promptTemplatePanel.classList.add('open');
+    // 每次打开都从后端拉取最新提示词库，确保素材库管理里的新增/修改/删除实时反映到画布（同根同源）。
+    try { await loadPromptTemplates(); } catch(e){}
+    if(!promptTemplateSelectedId || !promptTemplateItems().some(it => it.id === promptTemplateSelectedId)){
+        promptTemplateSelectedId = promptTemplateItems()[0]?.id || '';
+    }
+    renderPromptTemplatePanel();
     if(target === 'node' && nodeId){
         selectedId = nodeId;
         selectedIds = [];
@@ -3158,7 +3195,8 @@ function applyPromptTemplateToNode(mode='positive'){
 }
 async function saveCurrentPromptAsTemplate(){
     const library = activePromptLibrary();
-    if(library.id === 'system' || library.readonly){ toast('请选择可编辑的提示词库'); return; }
+    // 系统库 readonly=false，也允许新增条目（走后端，与素材库管理同步）。
+    if(library.readonly){ toast('请选择可编辑的提示词库'); return; }
     const text = promptTemplatePanel?.dataset.target === 'composer'
         ? promptPlainText()
         : String(nodes.find(n => n.id === promptTemplatePanel?.dataset.nodeId)?.text || '').trim();
@@ -3167,14 +3205,14 @@ async function saveCurrentPromptAsTemplate(){
         const data = await fetch('/api/prompt-libraries/items', {
             method:'POST',
             headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({library_id:library.id, name:defaultPromptPresetName(text), category:promptTemplateCategory === 'all' ? 'mine' : promptTemplateCategory, positive:text, scene:'我的提示词预设'})
+            body:JSON.stringify({library_id:library.id, name:defaultPromptPresetName(text), category:promptTemplateCategory === 'all' ? 'custom' : promptTemplateCategory, positive:text, scene:'我的提示词预设'})
         }).then(async r => {
             if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '保存失败');
             return r.json();
         });
         promptLibraries = data.library?.libraries || promptLibraries;
         activePromptLibraryId = library.id;
-        promptTemplateCategory = data.item?.category || 'mine';
+        promptTemplateCategory = data.item?.category || 'custom';
         promptTemplateSelectedId = data.item?.id || '';
         promptTemplateEditing = true;
         renderPromptTemplatePanel({preserveScroll:false});
@@ -3184,8 +3222,9 @@ async function saveCurrentPromptAsTemplate(){
 }
 async function createBlankPromptTemplate(){
     const library = activePromptLibrary();
-    if(library.id === 'system' || library.readonly){ toast('请选择可编辑的提示词库'); return; }
-    const category = promptTemplateCategory && promptTemplateCategory !== 'all' ? promptTemplateCategory : 'mine';
+    // 系统库 readonly=false，也允许新建空白条目（走后端，与素材库管理同步）。
+    if(library.readonly){ toast('请选择可编辑的提示词库'); return; }
+    const category = promptTemplateCategory && promptTemplateCategory !== 'all' ? promptTemplateCategory : 'custom';
     try {
         const data = await fetch('/api/prompt-libraries/items', {
             method:'POST',
@@ -3278,27 +3317,63 @@ async function deletePromptTemplate(){
     render();
     scheduleSave();
 }
-function createPromptTemplateGroup(){
+async function createPromptTemplateGroup(){
     const name = window.prompt(tr('smart.tplNewGroupPrompt'), tr('smart.tplNewGroupDefault'));
     if(!String(name || '').trim()) return;
+    const lib = activePromptLibrary();
+    // 系统库（readonly=false）也走后端新增分组，与素材库管理同步。
+    if(lib && !lib.readonly){
+        try {
+            const data = await fetch('/api/prompt-libraries/categories', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({name:String(name).trim().slice(0, 24), library_id:lib.id})
+            }).then(async r => { if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '新增分组失败'); return r.json(); });
+            promptLibraries = data.library?.libraries || promptLibraries;
+            promptTemplateCategory = data.category?.id || promptTemplateCategory;
+            renderPromptTemplatePanel({preserveScroll:false});
+        } catch(err){ if(typeof setStatus === 'function') setStatus(err.message || '新增分组失败'); }
+        return;
+    }
     const group = {id:uid('tpl_group'), name:String(name).trim().slice(0, 24)};
     promptTemplateGroups.push(group);
     savePromptTemplateGroups();
     promptTemplateCategory = group.id;
     renderPromptTemplatePanel({preserveScroll:false});
 }
-function renamePromptTemplateGroup(groupId){
-    const group = promptTemplateGroups.find(g => g.id === groupId);
+async function renamePromptTemplateGroup(groupId){
+    const lib = activePromptLibrary();
+    const group = activePromptTemplateGroups().find(g => g.id === groupId);
     if(!group) return;
     const name = window.prompt(tr('smart.tplGroupNamePrompt'), group.name || '');
     if(!String(name || '').trim()) return;
+    // 系统库的内置分组也走后端重命名（后端已放开内置分组限制），两端同步。
+    if(lib && !lib.readonly){
+        try {
+            const data = await fetch(`/api/prompt-libraries/categories/${encodeURIComponent(groupId)}`, {
+                method:'PATCH', headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({name:String(name).trim().slice(0, 24), library_id:lib.id})
+            }).then(async r => { if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '重命名失败'); return r.json(); });
+            promptLibraries = data.library?.libraries || promptLibraries;
+            renderPromptTemplatePanel();
+        } catch(err){ if(typeof setStatus === 'function') setStatus(err.message || '重命名失败'); }
+        return;
+    }
     group.name = String(name).trim().slice(0, 24);
     savePromptTemplateGroups();
     renderPromptTemplatePanel();
 }
-function deletePromptTemplateGroup(groupId){
-    if(['view','storyboard','character','product','lighting','mine'].includes(groupId)){
-        renamePromptTemplateGroup(groupId);
+async function deletePromptTemplateGroup(groupId){
+    const lib = activePromptLibrary();
+    // 系统库的内置分组也走后端删除（后端已放开限制并把孤立条目改挂到剩余分组），两端同步。
+    if(lib && !lib.readonly){
+        if(!window.confirm(tr('smart.tplDeleteGroupConfirm'))) return;
+        try {
+            const data = await fetch(`/api/prompt-libraries/categories/${encodeURIComponent(groupId)}`, {method:'DELETE'})
+                .then(async r => { if(!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || '删除失败'); return r.json(); });
+            promptLibraries = data.library?.libraries || promptLibraries;
+            if(promptTemplateCategory === groupId) promptTemplateCategory = 'all';
+            renderPromptTemplatePanel({preserveScroll:false});
+        } catch(err){ if(typeof setStatus === 'function') setStatus(err.message || '删除失败'); }
         return;
     }
     if(!window.confirm(tr('smart.tplDeleteGroupConfirm'))) return;
@@ -3320,6 +3395,9 @@ function assetCategories(type='image'){
     const library = activeAssetLibrary();
     return (library?.categories || assetLibrary.categories || []).filter(cat => (cat.type || 'image') === type);
 }
+function workflowAssetCategories(){
+    return assetCategories('workflow');
+}
 function assetLibraries(){
     return Array.isArray(assetLibrary.libraries) && assetLibrary.libraries.length ? assetLibrary.libraries : [{id:'default', name:'默认资产库', categories:assetLibrary.categories || []}];
 }
@@ -3331,6 +3409,11 @@ function activeAssetCategory(){
     const cats = assetCategories('image');
     if(!cats.length) return null;
     return cats.find(cat => cat.id === activeAssetCategoryId) || cats[0];
+}
+function activeWorkflowAssetCategory(){
+    const cats = workflowAssetCategories();
+    if(!cats.length) return null;
+    return cats.find(cat => cat.id === activeWorkflowAssetCategoryId) || cats[0];
 }
 async function loadAssetLibrary(){
     try {
@@ -3518,6 +3601,9 @@ function setAssetLibraryFromResponse(data, options={}){
     const cats = assetCategories('image');
     if(activeAssetCategoryId && !cats.some(cat => cat.id === activeAssetCategoryId)) activeAssetCategoryId = '';
     if(!activeAssetCategoryId) activeAssetCategoryId = activeAssetCategory()?.id || '';
+    const workflowCats = workflowAssetCategories();
+    if(activeWorkflowAssetCategoryId && !workflowCats.some(cat => cat.id === activeWorkflowAssetCategoryId)) activeWorkflowAssetCategoryId = '';
+    if(!activeWorkflowAssetCategoryId) activeWorkflowAssetCategoryId = activeWorkflowAssetCategory()?.id || '';
     if(mentionAssetCategoryId && !cats.some(cat => cat.id === mentionAssetCategoryId)) mentionAssetCategoryId = '';
     if(!mentionAssetCategoryId) mentionAssetCategoryId = activeAssetCategoryId;
     if(options.render !== false) {
@@ -3543,12 +3629,14 @@ function assetCategoryForMention(){
 }
 function assetMediaKind(item){
     if(!item) return 'image';
+    if(item.kind === 'workflow' || item.type === 'workflow') return 'workflow';
     if(item.kind === 'video' || item.type === 'video') return 'video';
     if(item.kind === 'audio' || item.type === 'audio') return 'audio';
     const url = String(item.url || item.thumbnail || '').toLowerCase().split('?')[0];
     const name = String(item.name || '').toLowerCase();
     if(/\.(mp4|webm|mov|m4v|avi|mkv)$/.test(url) || /\.(mp4|webm|mov|m4v|avi|mkv)$/.test(name)) return 'video';
     if(/\.(mp3|wav|m4a|aac|ogg|flac)$/.test(url) || /\.(mp3|wav|m4a|aac|ogg|flac)$/.test(name)) return 'audio';
+    if(/\.(json|zip)$/.test(url) || /\.(json|zip)$/.test(name)) return 'workflow';
     return 'image';
 }
 function assetThumbHtml(item){
@@ -3561,6 +3649,9 @@ function assetThumbHtml(item){
     if(kind === 'audio'){
         return `<div class="asset-thumb-wrap media-thumb audio-thumb asset-thumb"><i data-lucide="file-audio"></i><span>${escapeHtml(item.name || 'Audio')}</span></div>`;
     }
+    if(kind === 'workflow'){
+        return `<div class="asset-thumb-wrap media-thumb workflow-thumb asset-thumb"><i data-lucide="workflow"></i><span>${escapeHtml(item.name || 'Workflow')}</span></div>`;
+    }
     return `<img class="asset-thumb" src="${thumb}" alt="">`;
 }
 function renderAssetLibrary(){
@@ -3572,27 +3663,33 @@ function renderAssetLibrary(){
         assetLibrarySelect.innerHTML = libs.map(lib => `<option value="${escapeHtml(lib.id)}" ${lib.id === activeAssetLibraryId ? 'selected' : ''}>${escapeHtml(lib.name || '资产库')}</option>`).join('');
     }
     const imageMode = assetTab === 'image';
-    assetImageControls.style.display = imageMode ? 'block' : 'none';
+    const workflowMode = assetTab === 'workflow';
+    assetImageControls.style.display = (imageMode || workflowMode) ? 'block' : 'none';
     assetDropZone.style.display = imageMode ? 'flex' : 'none';
-    assetGrid.style.display = imageMode ? 'grid' : 'none';
-    workflowEmpty.style.display = imageMode ? 'none' : 'flex';
-    if(!imageMode){ refreshIcons(); return; }
-    const cats = assetCategories('image');
-    if(!cats.some(cat => cat.id === activeAssetCategoryId)) activeAssetCategoryId = cats[0]?.id || '';
-    assetCategorySelect.innerHTML = cats.map(cat => `<option value="${escapeHtml(cat.id)}" ${cat.id === activeAssetCategoryId ? 'selected' : ''}>${escapeHtml(cat.name || tr('smart.assetFolder'))}</option>`).join('');
-    const cat = activeAssetCategory();
+    assetGrid.style.display = (imageMode || workflowMode) ? 'grid' : 'none';
+    workflowEmpty.style.display = 'none';
+    if(!imageMode && !workflowMode){ refreshIcons(); return; }
+    const cats = workflowMode ? workflowAssetCategories() : assetCategories('image');
+    const activeCatId = workflowMode ? activeWorkflowAssetCategoryId : activeAssetCategoryId;
+    if(workflowMode && !cats.some(cat => cat.id === activeWorkflowAssetCategoryId)) activeWorkflowAssetCategoryId = cats[0]?.id || '';
+    if(imageMode && !cats.some(cat => cat.id === activeAssetCategoryId)) activeAssetCategoryId = cats[0]?.id || '';
+    assetCategorySelect.innerHTML = cats.map(cat => `<option value="${escapeHtml(cat.id)}" ${cat.id === (workflowMode ? activeWorkflowAssetCategoryId : activeAssetCategoryId) ? 'selected' : ''}>${escapeHtml(cat.name || (workflowMode ? '工作流' : tr('smart.assetFolder')))}</option>`).join('');
+    const cat = workflowMode ? activeWorkflowAssetCategory() : activeAssetCategory();
     const items = cat?.items || [];
     assetGrid.innerHTML = items.length ? items.map(item => `
-        <div class="asset-item" draggable="true" data-asset-id="${escapeHtml(item.id)}" data-url="${escapeHtml(item.url)}" data-name="${escapeHtml(item.name || 'asset')}" data-kind="${escapeHtml(assetMediaKind(item))}">
+        <div class="asset-item ${workflowMode ? 'workflow-asset-item' : ''}" draggable="${workflowMode ? 'false' : 'true'}" data-asset-id="${escapeHtml(item.id)}" data-url="${escapeHtml(item.url)}" data-name="${escapeHtml(item.name || 'asset')}" data-kind="${escapeHtml(assetMediaKind(item))}">
             ${assetThumbHtml(item)}
             <div class="asset-meta">
                 <span class="asset-name" title="${escapeHtml(item.name || '')}">${escapeHtml(item.name || 'asset')}</span>
-                <button class="asset-mini-btn" type="button" data-rename-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('smart.assetRename'))}"><i data-lucide="pencil"></i></button>
-                <button class="asset-mini-btn" type="button" data-delete-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('common.delete'))}"><i data-lucide="trash-2"></i></button>
+                ${workflowMode
+                    ? `<button class="asset-mini-btn" type="button" data-download-workflow-asset="${escapeHtml(item.id)}" title="导出工作流"><i data-lucide="download"></i></button>`
+                    : `<button class="asset-mini-btn" type="button" data-rename-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('smart.assetRename'))}"><i data-lucide="pencil"></i></button>
+                       <button class="asset-mini-btn" type="button" data-delete-asset="${escapeHtml(item.id)}" title="${escapeHtml(tr('common.delete'))}"><i data-lucide="trash-2"></i></button>`}
             </div>
         </div>
-    `).join('') : `<div class="asset-empty">${escapeHtml(tr('smart.assetEmpty'))}</div>`;
-    bindAssetItemEvents();
+    `).join('') : `<div class="asset-empty">${escapeHtml(workflowMode ? '暂无工作流资产' : tr('smart.assetEmpty'))}</div>`;
+    if(workflowMode) bindWorkflowAssetItemEvents();
+    else bindAssetItemEvents();
     refreshIcons();
 }
 function openAssetNameDialog({title='', value='', placeholder='', cancelValue='', multiline=false }={}){
@@ -3769,6 +3866,23 @@ function bindAssetItemEvents(){
         };
     });
 }
+function bindWorkflowAssetItemEvents(){
+    assetGrid.querySelectorAll('[data-download-workflow-asset]').forEach(btn => {
+        btn.onclick = e => {
+            e.preventDefault();
+            e.stopPropagation();
+            const item = (activeWorkflowAssetCategory()?.items || []).find(x => x.id === btn.dataset.downloadWorkflowAsset);
+            if(item?.url) {
+                const link = document.createElement('a');
+                link.href = item.url;
+                link.download = `${item.name || 'workflow'}${String(item.url).toLowerCase().endsWith('.json') ? '.json' : '.zip'}`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+            }
+        };
+    });
+}
 async function addUrlToAssetLibrary(url, name=''){
     const cat = activeAssetCategory();
     if(!cat){ toast(tr('smart.assetNoFolder')); return; }
@@ -3791,6 +3905,7 @@ async function loadCanvas(){
         if(!res.ok) return;
         const data = await res.json();
         canvas = data.canvas;
+        canvasUsesConnections = Object.prototype.hasOwnProperty.call(canvas || {}, 'connections');
         document.title = canvas.title || tr('canvas.smartCanvas');
         document.getElementById('smartTitle').textContent = canvas.title || tr('canvas.smartCanvas');
         nodes = (Array.isArray(canvas.nodes) ? canvas.nodes : []).map(normalizeLegacySmartNode).filter(Boolean);
@@ -3804,6 +3919,7 @@ async function loadCanvas(){
             }
         });
         canvas.connections = Array.isArray(canvas.connections) ? canvas.connections : [];
+        const cleanedDetachedInputs = cleanupDetachedRunInputRefs();
         viewport = {...viewport, ...(canvas.viewport || {})};
         viewport.scale = safeScale(viewport.scale);
         if(canvas.settings) settings = {...settings, ...canvas.settings};
@@ -3814,6 +3930,7 @@ async function loadCanvas(){
         updateProviderModels();
         applyViewport();
         render();
+        if(cleanedDetachedInputs) scheduleSave();
         resumeSmartPendingTasks();
         resumeJimengPendingNodes();
         startCanvasMetaPoll();
@@ -5721,6 +5838,7 @@ function disconnectConnection(index){
     if(toNode && Array.isArray(toNode.inputNodeIds)){
         toNode.inputNodeIds = toNode.inputNodeIds.filter(id => id !== conn.from);
     }
+    if(toNode && ['input','flow'].includes(conn.kind || 'flow')) clearDetachedRunInputRefs(toNode);
     if((conn.kind || 'flow') === 'history'){
         const group = nodes.find(n => n.id === conn.to && isHistoryGroupNode(n) && n.historyFor === conn.from);
         demoteHistoryGroupNode(group);
@@ -7816,12 +7934,68 @@ function renderInputThumbsRow(node){
 }
 function bindInputThumbsDrag(node, items){
     if(!inputThumbsRow) return;
+    let thumbDragIndex = -1;
     inputThumbsRow.querySelectorAll('.input-thumb').forEach(el => {
+        const index = Number(el.dataset.thumbIndex || -1);
+        const canReorder = items.length > 1 && Boolean(items[index]?.nodeId);
+        el.draggable = canReorder;
         el.addEventListener('click', e => {
             e.preventDefault();
             e.stopPropagation();
         });
+        if(!canReorder) return;
+        el.addEventListener('dragstart', e => {
+            e.stopPropagation();
+            thumbDragIndex = index;
+            el.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('application/x-smart-input-thumb', String(index));
+        });
+        el.addEventListener('dragend', e => {
+            e.stopPropagation();
+            thumbDragIndex = -1;
+            clearInputThumbDropMarkers();
+            el.classList.remove('dragging');
+        });
+        el.addEventListener('dragover', e => {
+            const rawFrom = e.dataTransfer.getData('application/x-smart-input-thumb');
+            const from = rawFrom === '' ? thumbDragIndex : Number(rawFrom);
+            if(!Number.isFinite(from) || from < 0 || from === index || !items[index]?.nodeId) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'move';
+            clearInputThumbDropMarkers();
+            const placement = inputThumbDropPlacement(el, e);
+            el.dataset.dropPlacement = placement;
+            el.classList.add(placement === 'before' ? 'drop-before' : 'drop-after');
+        });
+        el.addEventListener('dragleave', e => {
+            if(el.contains(e.relatedTarget)) return;
+            delete el.dataset.dropPlacement;
+            el.classList.remove('drop-before', 'drop-after');
+        });
+        el.addEventListener('drop', e => {
+            const rawFrom = e.dataTransfer.getData('application/x-smart-input-thumb');
+            const from = rawFrom === '' ? thumbDragIndex : Number(rawFrom);
+            if(!Number.isFinite(from) || from < 0 || from === index || !items[index]?.nodeId) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const placement = inputThumbDropPlacement(el, e);
+            clearInputThumbDropMarkers();
+            reorderInputThumb(node, items, from, index, placement);
+        });
     });
+}
+function inputThumbDropPlacement(el, event){
+    const rect = el.getBoundingClientRect();
+    return event.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+}
+function clearInputThumbDropMarkers(){
+    inputThumbsRow?.querySelectorAll('.input-thumb.drop-before,.input-thumb.drop-after,.input-thumb.dragging')
+        .forEach(el => {
+            delete el.dataset.dropPlacement;
+            el.classList.remove('drop-before', 'drop-after', 'dragging');
+        });
 }
 function bindInputThumbVideoActions(){
     inputThumbsRow?.querySelectorAll('[data-manual-video-url]').forEach(btn => {
@@ -7847,10 +8021,59 @@ function bindInputThumbVideoActions(){
         };
     });
 }
-function reorderInputThumb(currentNode, items, from, to){
+function movedBeforeAfterIds(ids, movedId, targetId, placement='before'){
+    const list = (ids || []).filter(Boolean);
+    const from = list.indexOf(movedId);
+    const target = list.indexOf(targetId);
+    if(from < 0 || target < 0 || movedId === targetId) return list;
+    const [moved] = list.splice(from, 1);
+    let insertAt = list.indexOf(targetId);
+    if(insertAt < 0) return ids || [];
+    if(placement === 'after') insertAt += 1;
+    list.splice(insertAt, 0, moved);
+    return list;
+}
+function sameOrderedIds(a, b){
+    if((a || []).length !== (b || []).length) return false;
+    return (a || []).every((id, index) => id === b[index]);
+}
+function reorderInputSourceNodes(currentNode, movedId, targetId, placement='before'){
+    if(!currentNode || !movedId || !targetId || movedId === targetId) return false;
+    const sourceNodes = smartImageUsesWorkflowInput(currentNode, smartLoopContext)
+        ? workflowInputNodesFor(currentNode)
+        : inputNodesFor(currentNode);
+    const sourceIds = sourceNodes.map(n => n.id).filter(Boolean);
+    if(!sourceIds.includes(movedId) || !sourceIds.includes(targetId)) return false;
+    const nextIds = movedBeforeAfterIds(sourceIds, movedId, targetId, placement);
+    if(sameOrderedIds(sourceIds, nextIds)) return false;
+    const oldExplicitIds = Array.isArray(currentNode.inputNodeIds) ? currentNode.inputNodeIds.filter(Boolean) : [];
+    currentNode.inputNodeIds = [
+        ...nextIds.filter(id => oldExplicitIds.includes(id)),
+        ...oldExplicitIds.filter(id => !nextIds.includes(id))
+    ];
+    if(canvas && Array.isArray(canvas.connections)){
+        const order = new Map(nextIds.map((id, index) => [id, index]));
+        const relevantSlots = new Set();
+        const relevant = [];
+        canvas.connections.forEach((conn, index) => {
+            const kind = conn?.kind || 'flow';
+            if(conn?.to === currentNode.id && ['input', 'flow'].includes(kind) && order.has(conn.from)){
+                relevantSlots.add(index);
+                relevant.push({conn, index});
+            }
+        });
+        if(relevant.length){
+            relevant.sort((a, b) => (order.get(a.conn.from) - order.get(b.conn.from)) || (a.index - b.index));
+            let cursor = 0;
+            canvas.connections = canvas.connections.map((conn, index) => relevantSlots.has(index) ? relevant[cursor++].conn : conn);
+        }
+    }
+    return true;
+}
+function reorderInputThumb(currentNode, items, from, to, placement='before'){
     // items are already sourced from inputImagesFor → multiple source nodes possible.
-    // We reorder by repositioning the X coordinates of source nodes if they're separate,
-    // OR by swapping within a single source node's images.
+    // Reorder within a source group's images first; separate input nodes use the
+    // current node's input order, with a visual-position swap as a final fallback.
     if(from < 0 || to < 0 || from >= items.length || to >= items.length) return;
     const fromImg = items[from];
     const toImg = items[to];
@@ -7863,18 +8086,26 @@ function reorderInputThumb(currentNode, items, from, to){
         const ti = Number(toImg.imageIndex);
         if(Number.isFinite(fi) && Number.isFinite(ti) && (src.images || [])[fi]){
             const arr = src.images;
+            let insertAt = Math.max(0, Math.min(arr.length, ti + (placement === 'after' ? 1 : 0)));
             const item = arr.splice(fi, 1)[0];
-            arr.splice(ti, 0, item);
+            if(fi < insertAt) insertAt -= 1;
+            arr.splice(Math.max(0, Math.min(arr.length, insertAt)), 0, item);
         }
         render();
         scheduleSave();
         return;
     }
-    // Cross-node reorder: swap X positions of source nodes
+    const canReorderSources = currentNode && fromImg.nodeId && toImg.nodeId;
     const a = nodes.find(n => n.id === fromImg.nodeId);
     const b = nodes.find(n => n.id === toImg.nodeId);
-    if(!a || !b) return;
+    if(!canReorderSources || !a || !b) return;
     pushUndo();
+    if(reorderInputSourceNodes(currentNode, fromImg.nodeId, toImg.nodeId, placement)){
+        render();
+        scheduleSave();
+        return;
+    }
+    // Cross-node fallback: swap X positions of source nodes
     const ax = a.x, ay = a.y;
     a.x = b.x; a.y = b.y;
     b.x = ax; b.y = ay;
@@ -8360,10 +8591,13 @@ function connectInputNode(fromId, toId){
 function upstreamNodesForKinds(node, kinds=['input']){
     if(!node) return [];
     const allowed = new Set(kinds);
-    const ids = new Set(allowed.has('input') ? (node.inputNodeIds || []) : []);
+    const ids = new Set();
     (canvas?.connections || []).forEach(conn => {
         if(conn.to === node.id && allowed.has(conn.kind || 'flow')) ids.add(conn.from);
     });
+    if(!canvasUsesConnections && allowed.has('input')){
+        (node.inputNodeIds || []).forEach(id => ids.add(id));
+    }
     return [...ids].map(id => nodes.find(n => n.id === id)).filter(Boolean);
 }
 function inputNodesFor(node){
@@ -8371,6 +8605,30 @@ function inputNodesFor(node){
 }
 function workflowInputNodesFor(node){
     return upstreamNodesForKinds(node, ['input', 'flow']);
+}
+function clearDetachedRunInputRefs(node){
+    if(!node) return;
+    const hasUpstream = Boolean((canvas?.connections || []).some(conn => conn.to === node.id && ['input','flow'].includes(conn.kind || 'flow')));
+    if(hasUpstream || (!canvasUsesConnections && Array.isArray(node.inputNodeIds) && node.inputNodeIds.some(id => nodes.some(n => n.id === id)))) return;
+    delete node.runInputRefs;
+    delete node.runPromptRefs;
+    delete node.sourceNodeId;
+}
+function cleanupDetachedRunInputRefs(){
+    if(!canvasUsesConnections) return false;
+    let changed = false;
+    nodes.forEach(node => {
+        const hadRefs = Array.isArray(node?.runInputRefs) && node.runInputRefs.length;
+        const hadPromptRefs = Array.isArray(node?.runPromptRefs) && node.runPromptRefs.length;
+        const hadSource = Boolean(node?.sourceNodeId);
+        clearDetachedRunInputRefs(node);
+        if(hadRefs !== (Array.isArray(node?.runInputRefs) && node.runInputRefs.length)
+            || hadPromptRefs !== (Array.isArray(node?.runPromptRefs) && node.runPromptRefs.length)
+            || hadSource !== Boolean(node?.sourceNodeId)){
+            changed = true;
+        }
+    });
+    return changed;
 }
 function imagesForNode(node){
     return (node?.images || []).map((img, index) => ({...imageForDisplay(img), nodeId:node.id, imageIndex:index}));
@@ -9060,6 +9318,10 @@ function createParallelLoopOutputNode(templateNode, sourceNode, roundIndex, roun
     delete output.runModelPrompt;
     delete output.runPromptRefs;
     delete output.runInputRefs;
+    // 克隆自模板节点会带上 inputNodeIds（含上游提示词节点），而生成出的输出槽并未真正
+    // 连线到这些上游；若不清空，节点即便没有任何连线也会一直显示"上游输入xxxx"。
+    output.inputNodeIds = [];
+    delete output.blockedInputRefs;
     nodes.push(output);
     connectInputNode(sourceNode.id, output.id);
     return output;
@@ -9122,6 +9384,10 @@ function createLoopOutputSlot(rootNode, roundIndex, roundOffset=0, options={}){
     delete output.runInputRefs;
     delete output.runFinishedAt;
     delete output.runElapsedMs;
+    // 同 createParallelLoopOutputNode：清空克隆带来的 inputNodeIds，否则输出槽虽只用 flow
+    // 连接到 root，却会因继承 root 的 inputNodeIds 而误显示上游提示词输入。
+    output.inputNodeIds = [];
+    delete output.blockedInputRefs;
     tagLoopOutputSlot(output, rootNode, options.loopNode || null, roundIndex, options.slotIndex ?? roundOffset);
     const slots = loopOutputSlotsForRoot(rootNode).map(nodeRect);
     let y = (Number(rootNode.y) || 0) + roundOffset * ((Number(rootRect.height) || 180) + 28);
@@ -9898,7 +10164,7 @@ async function runCascadeStepIntoNode(sourceNode, targetNode, inputRefs, ctx=sma
     );
     const prompt = (request.prompt || '').trim();
     const displayPrompt = (request.displayPrompt || '').trim();
-    if(!prompt || (!displayPrompt && !(runSettings.engine === 'comfy' && runSettings.comfyMode === 'enhance'))){
+    if((!prompt || !displayPrompt) && smartRunNeedsPrompt(runSettings)){
         settings = previousSettings;
         throw new Error('链路节点缺少提示词');
     }
@@ -9988,7 +10254,7 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
         const request = buildPromptRequestForNode(rootNode, refsForRequest.length ? refsForRequest : null, ctx);
         const prompt = (request.prompt || '').trim();
         const displayPrompt = (request.displayPrompt || '').trim();
-        if(!prompt || (!displayPrompt && !(runSettings.engine === 'comfy' && runSettings.comfyMode === 'enhance'))) throw new Error('链路节点缺少提示词');
+        if((!prompt || !displayPrompt) && smartRunNeedsPrompt(runSettings)) throw new Error('链路节点缺少提示词');
         const meta = {
             prompt,
             displayPrompt:request.displayPrompt || '',
@@ -10373,11 +10639,15 @@ async function runGeneration(){
     const request = buildPromptRequest(node, null, true, smartLoopContext);
     const prompt = request.prompt.trim();
     if(!node) return;
-    if(!prompt){ toast(tr('smart.toastNeedPrompt')); return; }
     const refs = request.refs;
     const previousSettings = cloneSmartSettings(settings);
     const runSettings = smartSettingsForNode(node);
     settings = {...settings, ...cloneSmartSettings(runSettings || {})};
+    if(!prompt && smartRunNeedsPrompt(settings)){
+        settings = previousSettings;
+        toast(tr('smart.toastNeedPrompt'));
+        return;
+    }
     const outpaintSize = node?.outpaintSize && Number(node.outpaintSize.width) > 0 && Number(node.outpaintSize.height) > 0
         ? {width:Math.round(Number(node.outpaintSize.width)), height:Math.round(Number(node.outpaintSize.height))}
         : null;
@@ -11197,6 +11467,7 @@ function ungroupNode(groupId){
             created_at:Date.now()
         };
         inheritNodeMetaFromImage(node);
+        clearDetachedRunInputRefs(node);
         return node;
     });
     nodes = nodes.filter(n => n.id !== groupId);
@@ -11979,10 +12250,15 @@ document.querySelectorAll('[data-asset-tab]').forEach(btn => {
 if(assetLibrarySelect) assetLibrarySelect.onchange = () => {
     activeAssetLibraryId = assetLibrarySelect.value || '';
     activeAssetCategoryId = '';
+    activeWorkflowAssetCategoryId = '';
     mentionAssetCategoryId = '';
     renderAssetLibrary();
 };
-if(assetCategorySelect) assetCategorySelect.onchange = () => { activeAssetCategoryId = assetCategorySelect.value; renderAssetLibrary(); };
+if(assetCategorySelect) assetCategorySelect.onchange = () => {
+    if(assetTab === 'workflow') activeWorkflowAssetCategoryId = assetCategorySelect.value;
+    else activeAssetCategoryId = assetCategorySelect.value;
+    renderAssetLibrary();
+};
 const assetAddCategoryBtn = document.getElementById('assetAddCategoryBtn');
 if(assetAddCategoryBtn) assetAddCategoryBtn.onclick = async () => {
     const name = await openAssetNameDialog({title:tr('smart.assetNewFolder'), value:tr('smart.assetFolder'), placeholder:tr('smart.assetFolder')});

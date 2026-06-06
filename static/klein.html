@@ -17,14 +17,14 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.02.1"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.06.02.1"></script>
-    <script src="/static/js/theme.js?v=2026.06.02.1"></script>
-    <script src="/static/js/i18n.js?v=2026.06.02.1"></script>
-    <script src="/static/js/image-preview.js?v=2026.06.02.1"></script>
-    <script src="/static/js/history-bulk-manager.js?v=2026.06.02.1"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.06"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.06.06"></script>
+    <script src="/static/js/theme.js?v=2026.06.06"></script>
+    <script src="/static/js/i18n.js?v=2026.06.06"></script>
+    <script src="/static/js/image-preview.js?v=2026.06.06"></script>
+    <script src="/static/js/history-bulk-manager.js?v=2026.06.06"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.06.02.1');
+        @import url('/static/vendor/css/fonts.css?v=2026.06.06');
 
         :root {
             --accent: #111827;
@@ -182,8 +182,14 @@
         .masonry-item:hover { transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0,0,0,0.08); }
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* 细节增强 LoRA 开关轨道：明/暗模式都保持足够对比度 */
+        .lora-track { background: #d1d5db; }
+        .lora-track.on { background: #111827; }
+        html.studio-theme-dark .lora-track { background: #3a465a; }
+        html.studio-theme-dark .lora-track.on { background: #3b82f6; }
     </style>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.06.02.1">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.06.06">
 </head>
 
 <body class="antialiased transition-colors duration-300">
@@ -264,7 +270,7 @@
                     <div id="loraSection" class="hidden flex-col gap-3 pt-2 border-t border-gray-100">
                         <label class="flex items-center gap-3 cursor-pointer select-none" onclick="toggleLora()">
                             <div class="relative w-9 h-5 flex-shrink-0">
-                                <div id="loraTrack" class="w-full h-full bg-gray-200 rounded-full transition-colors duration-200"></div>
+                                <div id="loraTrack" class="lora-track w-full h-full rounded-full transition-colors duration-200"></div>
                                 <div id="loraThumb" class="absolute left-0.5 top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200"></div>
                             </div>
                             <span class="text-[10px] font-bold text-gray-600 uppercase tracking-wider" data-i18n="studio.detailLora">细节增强 LoRA</span>
@@ -424,7 +430,7 @@
 
         function toggleLora() {
             loraEnabled = !loraEnabled;
-            document.getElementById('loraTrack').style.background = loraEnabled ? '#111827' : '';
+            document.getElementById('loraTrack').classList.toggle('on', loraEnabled);
             document.getElementById('loraThumb').style.transform = loraEnabled ? 'translateX(16px)' : '';
             const row = document.getElementById('loraStrengthRow');
             row.classList.toggle('hidden', !loraEnabled);
@@ -560,6 +566,22 @@
             }
         }
 
+        // 将主图尺寸对齐到 64 的倍数，使云端出图尺寸与原图一致
+        function computeMsSize(w, h) {
+            w = Math.round(w) || 0;
+            h = Math.round(h) || 0;
+            if (!w || !h) return { width: 1024, height: 1024 };
+            const MIN = 512, MAX = 2048;
+            const longest = Math.max(w, h);
+            if (longest > MAX) {
+                const scale = MAX / longest;
+                w = Math.round(w * scale);
+                h = Math.round(h * scale);
+            }
+            const align = (v) => Math.min(MAX, Math.max(MIN, Math.round(v / 64) * 64));
+            return { width: align(w), height: align(h) };
+        }
+
         async function submitCloud() {
             const prompt = document.getElementById('promptInput').value.trim();
             if (!prompt) { alert("Please enter a prompt"); return; }
@@ -584,10 +606,14 @@
 
             try {
                 setCloudStatus('Processing with FLUX.2-Klein...');
+                const mainPrev = document.getElementById('prev1');
+                const msSize = computeMsSize(mainPrev && mainPrev.naturalWidth, mainPrev && mainPrev.naturalHeight);
                 const msPayload = {
                     prompt,
                     model: 'black-forest-labs/FLUX.2-klein-9B',
                     image_urls: imageUrls,
+                    width: msSize.width,
+                    height: msSize.height,
                     client_id: CLIENT_ID
                 };
                 if (loraEnabled) {

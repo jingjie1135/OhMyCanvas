@@ -17,14 +17,14 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.02.1"></script>
-    <script src="/static/vendor/js/lucide.js?v=2026.06.02.1"></script>
-    <script src="/static/js/theme.js?v=2026.06.02.1"></script>
-    <script src="/static/js/i18n.js?v=2026.06.02.1"></script>
-    <script src="/static/js/image-preview.js?v=2026.06.02.1"></script>
-    <script src="/static/js/history-bulk-manager.js?v=2026.06.02.1"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.06"></script>
+    <script src="/static/vendor/js/lucide.js?v=2026.06.06"></script>
+    <script src="/static/js/theme.js?v=2026.06.06"></script>
+    <script src="/static/js/i18n.js?v=2026.06.06"></script>
+    <script src="/static/js/image-preview.js?v=2026.06.06"></script>
+    <script src="/static/js/history-bulk-manager.js?v=2026.06.06"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.06.02.1');
+        @import url('/static/vendor/css/fonts.css?v=2026.06.06');
 
         :root {
             --accent: #111827;
@@ -267,7 +267,7 @@
             letter-spacing: .04em;
         }
     </style>
-    <link rel="stylesheet" href="/static/css/theme.css?v=2026.06.02.1">
+    <link rel="stylesheet" href="/static/css/theme.css?v=2026.06.06">
 </head>
 
 <body class="selection:bg-black selection:text-white">
@@ -650,6 +650,22 @@
             }
         }
 
+        // 将原图尺寸对齐到 64 的倍数，并限制在 ModelScope 合理范围内
+        function computeMsSize(w, h) {
+            w = Math.round(w) || 0;
+            h = Math.round(h) || 0;
+            if (!w || !h) return { width: 1024, height: 1024 };
+            const MIN = 512, MAX = 2048;
+            const longest = Math.max(w, h);
+            if (longest > MAX) {
+                const scale = MAX / longest;
+                w = Math.round(w * scale);
+                h = Math.round(h * scale);
+            }
+            const align = (v) => Math.min(MAX, Math.max(MIN, Math.round(v / 64) * 64));
+            return { width: align(w), height: align(h) };
+        }
+
         async function handleGenerate() {
             if (!uploadedPath) {
                 const dropzone = document.getElementById('dropzone');
@@ -675,22 +691,29 @@
                 if (enhanceProvider === 'ms') {
                     // MS Cloud: Klein model + enhance LoRA
                     debugStep = "MS Cloud Request";
-                    const previewSrc = document.getElementById('previewImg').src;
+                    const previewEl = document.getElementById('previewImg');
+                    const previewSrc = previewEl.src;
                     if (!previewSrc || previewSrc === window.location.href) throw new Error("请先上传图片");
+                    // 让出图尺寸与原图一致：取原图自然尺寸并对齐到 64 的倍数
+                    const msSize = computeMsSize(previewEl.naturalWidth, previewEl.naturalHeight);
                     const strength = parseFloat(document.getElementById('msStrengthSlider').value) || 0.8;
                     const prompt = document.getElementById('msPromptInput').value.trim()
                         || 'masterpiece, best quality, ultra-detailed, high resolution';
-                    let token = localStorage.getItem('modelscope_api_token') || '';
-                    if (!token) {
-                        try {
-                            const tokenRes = await fetch('/api/config/token');
-                            if (tokenRes.ok) {
-                                const tokenData = await tokenRes.json();
-                                token = tokenData.token || '';
-                            }
-                        } catch (e) {
-                            console.warn('Failed to fetch ModelScope token', e);
+                    // 优先用 API 设置里集中管理的 Token（服务端）；localStorage 仅作旧版兜底
+                    let token = '';
+                    try {
+                        const tokenRes = await fetch('/api/config/token');
+                        if (tokenRes.ok) {
+                            const tokenData = await tokenRes.json();
+                            token = tokenData.token || '';
                         }
+                    } catch (e) {
+                        console.warn('Failed to fetch ModelScope token', e);
+                    }
+                    if (token) {
+                        try { localStorage.removeItem('modelscope_api_token'); } catch (e) { }
+                    } else {
+                        token = localStorage.getItem('modelscope_api_token') || '';
                     }
                     const msRes = await fetch('/api/ms/generate', {
                         method: 'POST',
@@ -700,6 +723,8 @@
                             api_key: token,
                             model: 'black-forest-labs/FLUX.2-klein-9B',
                             image_urls: [previewSrc],
+                            width: msSize.width,
+                            height: msSize.height,
                             loras: { 'Daniel8152/Klein-enhance': strength },
                             client_id: CLIENT_ID
                         })

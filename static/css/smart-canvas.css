@@ -404,12 +404,14 @@ video.node-img { object-fit:cover; background:#0f172a; }
 .input-thumb-actions { flex:0 0 auto; margin-left:auto; display:flex; align-items:center; gap:6px; }
 .input-thumb-actions .smart-pill { height:28px; white-space:nowrap; }
 .input-thumb { position:relative; width:42px; height:42px; flex:0 0 auto; border-radius:9px; overflow:visible; border:1px solid var(--line); background:var(--soft); cursor:pointer; transition:transform .12s ease, border-color .12s ease, box-shadow .12s ease; }
+.input-thumb[draggable="true"] { cursor:grab; }
 .input-thumb:active { cursor:grabbing; }
 .input-thumb img, .input-thumb video { width:100%; height:100%; object-fit:cover; border-radius:inherit; background:#0f172a; display:block; pointer-events:none; }
 .input-thumb-label { position:absolute; left:0; top:0; z-index:4; height:14px; padding:0 4px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; background:rgba(15,23,42,.84); color:#fff; border:1px solid rgba(255,255,255,.52); box-shadow:0 2px 7px rgba(15,23,42,.18); font-size:7.5px; line-height:1; font-weight:900; white-space:nowrap; pointer-events:none; transform:translate(-28%, -30%); }
 .theme-dark .input-thumb-label { background:rgba(2,6,23,.82); border-color:rgba(226,232,240,.28); color:#f8fafc; }
 .input-thumb:hover { border-color:var(--text); transform:translateY(-1px); box-shadow:0 6px 14px rgba(15,23,42,.1); }
 .input-thumb.input-self { cursor:default; border-color:var(--strong); box-shadow:inset 0 0 0 1px var(--strong); }
+.input-thumb.input-self[draggable="true"] { cursor:grab; }
 .input-thumb.input-self:hover { transform:none; box-shadow:inset 0 0 0 1px var(--strong); }
 .input-thumb.input-blocked { border-color:rgba(239,68,68,.62); box-shadow:inset 0 0 0 1px rgba(239,68,68,.22); }
 .input-thumb.input-blocked img, .input-thumb.input-blocked video { filter:grayscale(1); opacity:.36; }
@@ -896,6 +898,9 @@ input[type=range].smart-range::-webkit-slider-thumb { -webkit-appearance:none; w
 .asset-thumb-wrap .asset-thumb { width:100%; height:100%; aspect-ratio:auto; }
 .asset-video-badge { position:absolute; left:7px; bottom:7px; height:22px; padding:0 8px; border-radius:999px; display:inline-flex; align-items:center; gap:4px; background:rgba(15,23,42,.78); color:#fff; font-size:9px; font-weight:900; letter-spacing:.06em; pointer-events:none; }
 .asset-video-badge i,.asset-video-badge svg { width:10px; height:10px; }
+.workflow-thumb { flex-direction:column; align-items:center; justify-content:center; gap:7px; padding:10px; color:var(--muted); text-align:center; font-size:10px; font-weight:850; }
+.workflow-thumb i,.workflow-thumb svg { width:24px; height:24px; color:var(--text); }
+.workflow-asset-item { cursor:default; }
 .asset-meta { display:flex; align-items:center; gap:4px; min-width:0; padding:6px; }
 .asset-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10.5px; font-weight:600; color:var(--text); }
 .asset-rename-input { flex:1; min-width:0; height:26px; border-radius:8px; border:1px solid var(--line); background:var(--soft); color:var(--text); outline:none; padding:0 7px; font-size:10.5px; font-weight:650; }

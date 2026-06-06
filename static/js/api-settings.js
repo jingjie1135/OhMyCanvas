@@ -117,6 +117,22 @@ const RECOMMENDED_APIS = [
         advantages:['模型类型覆盖广', '适合多节点混合工作流', '异步协议适合长任务']
     },
     {
+        name:'玉玉API',
+        base_url:'https://yuli.host',
+        protocol:'openai',
+        register_url:'https://yuli.host/register?aff=95JQ',
+        tagKeys:['api.tagImageModels','api.tagVideoModels','api.tagLlmModels'],
+        icons:['IMG','VID','LLM'],
+        summaryKey:'api.recommendYuliSummary',
+        perkKey:'api.recommendYuliPerk',
+        advantages:['模型种类最全', '图像/视频/LLM 全覆盖', '支持签到送积分'],
+        // 添加平台时预填的默认模型列表（含逐模型协议覆盖）
+        image_models:['gpt-image-2', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
+        chat_models:['gpt-5.5'],
+        video_models:['veo3.1-fast'],
+        model_protocols:{'gemini-3.1-flash-image-preview':'gemini', 'gemini-3-pro-image-preview':'gemini'}
+    },
+    {
         name:'FHL',
         base_url:'https://www.fhl.mom',
         protocol:'openai',
@@ -757,6 +773,8 @@ function closeRhWorkflowEditor(){
 }
 function renderRhWorkflowEditorLoading(text){
     if(rhWorkflowEditorTitle) rhWorkflowEditorTitle.textContent = rhWorkflowEditorState.entry?.title || (rhEditorMode === 'app' ? 'RunningHub AI 应用' : 'RunningHub 工作流');
+    if(rhWorkflowEditName) rhWorkflowEditName.value = rhWorkflowEditorState.entry?.title || '';
+    if(rhWorkflowEditNote) rhWorkflowEditNote.value = rhWorkflowEditorState.entry?.note || '';
     if(rhWorkflowEditorSub) rhWorkflowEditorSub.textContent = rhEditorMode === 'app'
         ? `/run/ai-app/${rhWorkflowEditorState.entry?.appId || rhWorkflowEditorState.entry?.id || ''}`
         : `/run/workflow/${rhWorkflowEditorState.entry?.workflowId || rhWorkflowEditorState.entry?.id || ''}`;
@@ -1906,6 +1924,7 @@ function renderRecommendApi(){
                 </div>
                 <p class="recommend-platform-summary">${escapeHtml(tr(api.summaryKey))}</p>
                 <div class="recommend-tags">
+                    ${api.perkKey ? `<span class="recommend-tag recommend-perk-tag"><i data-lucide="gift" class="w-3 h-3"></i><span>${escapeHtml(tr(api.perkKey))}</span></span>` : ''}
                     ${(api.tagKeys || []).map(tag => `<span class="recommend-tag">${escapeHtml(tag.startsWith('api.') ? tr(tag) : tag)}</span>`).join('')}
                 </div>
             </div>
@@ -1965,9 +1984,10 @@ function recommendedProviderForApi(api){
         image_edit_endpoint:'',
         enabled:true,
         primary:false,
-        image_models:[],
-        chat_models:[],
-        video_models:[],
+        image_models:Array.isArray(api.image_models) ? [...api.image_models] : [],
+        chat_models:Array.isArray(api.chat_models) ? [...api.chat_models] : [],
+        video_models:Array.isArray(api.video_models) ? [...api.video_models] : [],
+        model_protocols:(api.model_protocols && typeof api.model_protocols === 'object') ? {...api.model_protocols} : {},
         has_key:false,
         key_preview:''
     };
@@ -2367,6 +2387,22 @@ function currentProviderApiKey(item){
     }
     return keyInput.value.trim();
 }
+function applyDetectedProtocol(protocol){
+    const item = provider();
+    const detected = String(protocol || '').toLowerCase();
+    if(!item || !protocolInput || !['openai', 'apimart', 'gemini', 'volcengine', 'jimeng'].includes(detected)) return false;
+    if(String(protocolInput.value || '').toLowerCase() === detected && String(item.protocol || '').toLowerCase() === detected) return false;
+    protocolInput.value = detected;
+    item.protocol = detected;
+    item.base_url = detected === 'jimeng' ? '' : (baseInput?.value.trim() || item.base_url || '');
+    if(detected === 'volcengine'){
+        item.video_models = unique([...(item.video_models || []), ...VOLCENGINE_DEFAULT_VIDEO_MODELS]);
+        item.volcengine_project_name = item.volcengine_project_name || VOLCENGINE_DEFAULT_PROJECT_NAME;
+        item.volcengine_region = item.volcengine_region || VOLCENGINE_DEFAULT_REGION;
+    }
+    protocolInput.dispatchEvent(new Event('change'));
+    return true;
+}
 
 async function probeAsync(){
     const item = provider();
@@ -2392,8 +2428,7 @@ async function probeAsync(){
         const isOpenAiCompat = data.ok === true && detectedProtocol === 'openai';
         const keepManualProtocol = ['gemini', 'volcengine', 'jimeng'].includes(currentProtocol);
         if(protocolInput && !keepManualProtocol){
-            protocolInput.value = isAsync ? 'apimart' : 'openai';
-            protocolInput.dispatchEvent(new Event('change'));
+            applyDetectedProtocol(detectedProtocol || (isAsync ? 'apimart' : 'openai'));
         }
         const rawJson = JSON.stringify(data.raw, null, 2);
         const probeMessage = String(data.message || '');
@@ -2445,6 +2480,10 @@ async function testConnection(){
             return r.json();
         });
         if(data.ok){
+            const detectedProtocol = String(data.protocol || '').toLowerCase();
+            if(detectedProtocol && detectedProtocol !== String(protocolInput?.value || '').toLowerCase()){
+                applyDetectedProtocol(detectedProtocol);
+            }
             // 存入 picker 状态并启用「选择模型」按钮，但不自动弹出
             lastFetchedAll = data.all || [];
             lastFetchedSuggestion = {
@@ -2454,8 +2493,9 @@ async function testConnection(){
             };
             const openBtn = document.getElementById('openPickerBtn');
             if(openBtn){ openBtn.disabled = false; openBtn.style.opacity = '1'; }
-            const volcengineNote = isVolcengineProvider(item)
-                ? `<div style="margin-top:6px;color:#92400e;font-size:11px;font-weight:700">火山协议提示：模型列表只代表可见模型，聊天模型建议填写你在方舟控制台创建的 <code>ep-...</code> 推理接入点。</div>`
+            const isVolcengineNow = detectedProtocol === 'volcengine' || isVolcengineProvider(item);
+            const volcengineNote = isVolcengineNow
+                ? `<div style="margin-top:6px;color:#92400e;font-size:11px;font-weight:700">${detectedProtocol === 'volcengine' ? '已自动识别为方舟/Ark 任务协议。' : ''}火山协议提示：模型列表只代表可见模型，聊天模型建议填写你在方舟控制台创建的 <code>ep-...</code> 推理接入点。</div>`
                 : '';
             const jimengNote = isJimeng ? `<div style="margin-top:6px;color:#15803d;font-size:11px;font-weight:700">即梦 CLI 已可用，可在画布里选择“即梦 CLI”生成。</div>` : '';
             showVerifyResult(`<span style="color:#15803d;font-size:11px;font-weight:800">✓ 地址验证通过 · 找到 ${data.model_count} 个模型</span>${volcengineNote}${jimengNote}`);
@@ -2499,10 +2539,14 @@ async function fetchModels(){
             chat: new Set(data.chat_models || []),
             video: new Set(data.video_models || []),
         };
+        const detectedProtocol = String(data.protocol || '').toLowerCase();
+        if(detectedProtocol && detectedProtocol !== String(protocolInput?.value || '').toLowerCase()){
+            applyDetectedProtocol(detectedProtocol);
+        }
         // 启用「选择模型」按钮，并 statusbar 显示已拉取数量
         const openBtn = document.getElementById('openPickerBtn');
         if(openBtn){ openBtn.disabled = false; openBtn.style.opacity = '1'; }
-        const extra = isVolcengineProvider(item) ? ' · 火山聊天建议改填 ep-... 接入点' : '';
+        const extra = (detectedProtocol === 'volcengine' || isVolcengineProvider(item)) ? ' · 已识别方舟协议，火山聊天建议改填 ep-... 接入点' : '';
         setStatus(`已拉取 ${data.total} 个模型 · 点「选择模型」勾选要导入的${extra}`);
         openModelPicker();
     } catch(e){
@@ -2638,6 +2682,21 @@ async function clearKeyOnly(){
     const ok = await saveProviders();
     if(ok) keyInput.value = '';
 }
+const FIXED_PROTOCOL_PROVIDER_IDS = new Set(['modelscope', 'volcengine', 'jimeng', 'runninghub']);
+function providerSupportsModelProtocol(item){
+    return Boolean(item) && !FIXED_PROTOCOL_PROVIDER_IDS.has(item.id);
+}
+function modelProtocolSelectHtml(kind, index, model, item){
+    if(kind === 'video' || !providerSupportsModelProtocol(item)) return '';
+    const map = (item.model_protocols && typeof item.model_protocols === 'object') ? item.model_protocols : {};
+    const current = String(map[String(model || '').trim()] || '').toLowerCase();
+    const opt = (val, label) => `<option value="${val}" ${current === val ? 'selected' : ''}>${label}</option>`;
+    return `<select class="model-protocol-select" title="该模型使用的协议，默认跟随平台全局协议" onchange="updateModelProtocol('${kind}', ${index}, this.value)">
+        <option value="" ${current === '' ? 'selected' : ''}>默认</option>
+        ${opt('openai', 'OpenAI')}
+        ${opt('gemini', 'Gemini')}
+    </select>`;
+}
 function renderModels(kind){
     const item = provider();
     const key = kind === 'image' ? 'image_models' : kind === 'video' ? 'video_models' : 'chat_models';
@@ -2647,9 +2706,11 @@ function renderModels(kind){
         list.innerHTML = `<div class="empty">${tr('api.noModels')}</div>`;
         return;
     }
+    const showProtocol = kind !== 'video' && providerSupportsModelProtocol(item);
     list.innerHTML = models.map((model, index) => `
-        <div class="model-row">
+        <div class="model-row${showProtocol ? ' has-protocol' : ''}">
             <input value="${escapeAttr(model)}" oninput="updateModel('${kind}', ${index}, this.value)">
+            ${modelProtocolSelectHtml(kind, index, model, item)}
             <button class="icon-btn" type="button" onclick="removeModel('${kind}', ${index})" title="删除"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
         </div>
     `).join('');
@@ -2811,16 +2872,54 @@ function addModel(kind){
     renderModels(kind);
     if(kind === 'image') renderMsLoras();
 }
+function modelProtocolStillUsed(item, name){
+    if(!item || !name) return false;
+    const lists = ['image_models', 'chat_models', 'video_models'];
+    return lists.some(k => Array.isArray(item[k]) && item[k].includes(name));
+}
 function updateModel(kind, index, value){
     const item = provider();
     const key = kind === 'image' ? 'image_models' : kind === 'video' ? 'video_models' : 'chat_models';
+    const oldName = String(item[key][index] || '').trim();
+    const newName = String(value || '').trim();
     item[key][index] = value;
+    // 重命名时迁移该模型的协议覆盖
+    if(item.model_protocols && typeof item.model_protocols === 'object' && oldName && oldName !== newName){
+        if(Object.prototype.hasOwnProperty.call(item.model_protocols, oldName)){
+            const proto = item.model_protocols[oldName];
+            // 旧名称在其他列表里不再使用时才删除旧键
+            const stillUsedElsewhere = (() => {
+                const lists = ['image_models', 'chat_models', 'video_models'];
+                return lists.some(k => Array.isArray(item[k]) && item[k].some((m, i) => !(k === key && i === index) && String(m || '').trim() === oldName));
+            })();
+            if(!stillUsedElsewhere) delete item.model_protocols[oldName];
+            if(newName) item.model_protocols[newName] = proto;
+        }
+    }
     if(kind === 'image') renderMsLoras();
+}
+function updateModelProtocol(kind, index, value){
+    const item = provider();
+    const key = kind === 'image' ? 'image_models' : kind === 'video' ? 'video_models' : 'chat_models';
+    const name = String(item[key]?.[index] || '').trim();
+    if(!name) return;
+    if(!item.model_protocols || typeof item.model_protocols !== 'object') item.model_protocols = {};
+    const proto = String(value || '').trim().toLowerCase();
+    if(proto === 'openai' || proto === 'gemini'){
+        item.model_protocols[name] = proto;
+    } else {
+        delete item.model_protocols[name];
+    }
 }
 function removeModel(kind, index){
     const item = provider();
     const key = kind === 'image' ? 'image_models' : kind === 'video' ? 'video_models' : 'chat_models';
+    const removed = String(item[key][index] || '').trim();
     item[key].splice(index, 1);
+    // 清理不再使用的协议覆盖
+    if(removed && item.model_protocols && typeof item.model_protocols === 'object' && !modelProtocolStillUsed(item, removed)){
+        delete item.model_protocols[removed];
+    }
     renderModels(kind);
     if(kind === 'image') renderMsLoras();
 }
@@ -2886,6 +2985,7 @@ async function saveProviders(){
                 image_models:item.image_models || [],
                 chat_models:item.chat_models || [],
                 video_models:item.video_models || [],
+                model_protocols:(item.model_protocols && typeof item.model_protocols === 'object') ? item.model_protocols : {},
                 ms_loras:item.id === 'modelscope' ? (item.ms_loras || []) : [],
                 ms_defaults_version:item.id === 'modelscope' ? (item.ms_defaults_version || 1) : 0,
                 rh_apps:item.id === 'runninghub' ? (item.rh_apps || []) : [],

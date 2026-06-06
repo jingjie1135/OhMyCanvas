@@ -23,11 +23,11 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.02.1"></script>
-    <script src="/static/js/theme.js?v=2026.06.02.1"></script>
-    <script src="/static/js/i18n.js?v=2026.06.02.1"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.06"></script>
+    <script src="/static/js/theme.js?v=2026.06.06"></script>
+    <script src="/static/js/i18n.js?v=2026.06.06"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.06.02.1');
+        @import url('/static/vendor/css/fonts.css?v=2026.06.06');
 
         /* 本地 Tailwind 工具类兜底：CDN 慢/未就绪时也能立刻给图标尺寸，避免首屏左侧栏空白 */
         .w-1\.5 { width: 0.375rem; }
@@ -659,8 +659,12 @@
             line-height:1;
             white-space:nowrap;
             overflow:hidden;
+            cursor:pointer;
             transition:width 0.3s var(--fluid-ease) 0.5s, color .2s, border-color .2s, background-color .2s;
         }
+        .project-version-badge:hover { color:var(--text); border-color:var(--accent, #6366f1); }
+        .project-version-badge.checking { opacity:.6; animation:badge-pulse 1s ease-in-out infinite; }
+        @keyframes badge-pulse { 0%,100%{opacity:.5;} 50%{opacity:1;} }
 
         .sidebar:hover .project-version-badge {
             width:170px;
@@ -870,6 +874,7 @@
             display:flex;
             align-items:flex-start;
             gap:10px;
+            margin-top:16px;
             padding:12px;
             border:1px solid #e5e7eb;
             border-radius:8px;
@@ -899,15 +904,29 @@
         .update-modal-summary.warn .update-modal-dot { background:#f59e0b; }
         .update-modal-summary.fail .update-modal-dot { background:#ef4444; }
 
-        .connectivity-list {
-            display:grid;
-            gap:8px;
-            margin-top:14px;
-        }
+        /* 更新弹窗：双卡片需要更宽的面板，避免左右布局被裁剪 */
+        #project-update-modal .studio-modal-panel { width:min(880px, 100%); max-height:min(840px, calc(100vh - 48px)); }
+        .update-source-list { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; align-items:stretch; }
+        @media (max-width: 720px) { .update-source-list { grid-template-columns:1fr; } }
+        .update-source-card { width:100%; min-width:0; border:1px solid #e5e7eb; border-radius:10px; background:#fff; color:#111827; text-align:left; padding:12px; display:flex; flex-direction:column; gap:10px; cursor:pointer; transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease, background .16s ease; }
+        .update-source-card:hover { transform:translateY(-1px); border-color:#cbd5e1; box-shadow:0 12px 28px rgba(15,23,42,.08); }
+        .update-source-card.active { border-color:#16a34a; box-shadow:0 0 0 2px rgba(22,163,74,.20); background:#f0fdf4; }
+        .update-source-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+        .update-source-title { min-width:0; display:flex; flex-direction:column; gap:4px; }
+        .update-source-title strong { color:#111827; font-size:13px; line-height:1.2; font-weight:950; }
+        .update-source-title span { color:#64748b; font-size:11px; line-height:1.35; font-weight:700; }
+        .update-source-head-right { flex:0 0 auto; display:flex; align-items:center; gap:8px; }
+        .update-source-check { display:none; flex:0 0 auto; width:22px; height:22px; border-radius:999px; background:#16a34a; color:#fff; align-items:center; justify-content:center; }
+        .update-source-check svg { width:14px; height:14px; }
+        .update-source-card.active .update-source-check { display:flex; }
+        .update-source-badge { flex:0 0 auto; min-width:56px; height:24px; border-radius:999px; background:#f1f5f9; color:#64748b; display:flex; align-items:center; justify-content:center; padding:0 9px; font-size:10px; font-weight:900; }
+        .update-source-badge.ok { background:#16a34a; color:#fff; }
+        .update-source-badge.bad { background:#dc2626; color:#fff; }
+        .connectivity-list { display:grid; gap:8px; min-width:0; }
 
         .connectivity-row {
             display:grid;
-            grid-template-columns:12px 1fr auto;
+            grid-template-columns:12px minmax(0, 1fr) auto;
             align-items:center;
             gap:10px;
             min-height:42px;
@@ -916,6 +935,7 @@
             border-radius:8px;
             background:#fff;
         }
+        .connectivity-row > div { min-width:0; }
 
         .connectivity-indicator {
             width:9px;
@@ -940,7 +960,7 @@
 
         .connectivity-url {
             margin-top:3px;
-            max-width:360px;
+            max-width:100%;
             overflow:hidden;
             text-overflow:ellipsis;
             white-space:nowrap;
@@ -955,6 +975,8 @@
             color:#64748b;
             white-space:nowrap;
         }
+        .connectivity-row.ok .connectivity-status { color:#16a34a; }
+        .connectivity-row.fail .connectivity-status { color:#ef4444; }
 
         .connectivity-error {
             grid-column:2 / 4;
@@ -1065,6 +1087,20 @@
             color:#e8e8ea;
         }
 
+        html.theme-dark .update-source-card,
+        body.theme-dark .update-source-card {
+            background:#111216;
+            border-color:#25262b;
+            color:#e8e8ea;
+        }
+
+        html.theme-dark .update-source-card.active,
+        body.theme-dark .update-source-card.active {
+            border-color:#22c55e;
+            box-shadow:0 0 0 2px rgba(34,197,94,.35);
+            background:rgba(34,197,94,.12);
+        }
+
         html.theme-dark .studio-modal-head,
         body.theme-dark .studio-modal-head,
         html.theme-dark .studio-modal-actions,
@@ -1088,9 +1124,16 @@
 
         html.theme-dark .update-modal-summary strong,
         body.theme-dark .update-modal-summary strong,
+        html.theme-dark .update-source-title strong,
+        body.theme-dark .update-source-title strong,
         html.theme-dark .connectivity-name,
         body.theme-dark .connectivity-name {
             color:#e8e8ea;
+        }
+
+        html.theme-dark .update-source-title span,
+        body.theme-dark .update-source-title span {
+            color:#8f9aab;
         }
 
         html.theme-dark .studio-modal-btn.primary,
@@ -1415,7 +1458,7 @@
                     </svg>
                     <span id="update-now-text" class="update-now-text" data-i18n="update.oneClick">一键更新</span>
                 </button>
-                <div id="project-version-badge" class="project-version-badge" title="当前版本">v-</div>
+                <div id="project-version-badge" class="project-version-badge" title="点击检测更新" role="button" tabindex="0" onclick="checkForUpdates(true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();checkForUpdates(true);}">v-</div>
             </div>
 
             <div class="author-box">
@@ -1466,16 +1509,16 @@
         </script>
 
         <main class="stage">
-            <iframe id="frame-zimage" data-src="/static/zimage.html?v=2026.06.02.1" class="active" scrolling="yes"></iframe>
-            <iframe id="frame-enhance" data-src="/static/enhance.html?v=2026.06.02.1" scrolling="yes"></iframe>
-            <iframe id="frame-klein" data-src="/static/klein.html?v=2026.06.02.1" scrolling="yes"></iframe>
-            <iframe id="frame-angle" data-src="/static/angle.html?v=2026.06.02.1" scrolling="yes"></iframe>
-            <iframe id="frame-online" data-src="/static/online.html?v=2026.06.02.1" scrolling="yes"></iframe>
-            <iframe id="frame-gpt-chat" data-src="/static/gpt-chat.html?v=2026.06.02.1" scrolling="yes"></iframe>
-            <iframe id="frame-canvas" data-src="/static/canvas.html?v=2026.06.02.1" scrolling="yes"></iframe>
-            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.06.02.1" scrolling="yes"></iframe>
-            <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.06.02.1" scrolling="yes"></iframe>
-            <iframe id="frame-comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.06.02.1" scrolling="yes"></iframe>
+            <iframe id="frame-zimage" data-src="/static/zimage.html?v=2026.06.06" class="active" scrolling="yes"></iframe>
+            <iframe id="frame-enhance" data-src="/static/enhance.html?v=2026.06.06" scrolling="yes"></iframe>
+            <iframe id="frame-klein" data-src="/static/klein.html?v=2026.06.06" scrolling="yes"></iframe>
+            <iframe id="frame-angle" data-src="/static/angle.html?v=2026.06.06" scrolling="yes"></iframe>
+            <iframe id="frame-online" data-src="/static/online.html?v=2026.06.06" scrolling="yes"></iframe>
+            <iframe id="frame-gpt-chat" data-src="/static/gpt-chat.html?v=2026.06.06" scrolling="yes"></iframe>
+            <iframe id="frame-canvas" data-src="/static/canvas.html?v=2026.06.06" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.06.06" scrolling="yes"></iframe>
+            <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.06.06" scrolling="yes"></iframe>
+            <iframe id="frame-comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.06.06" scrolling="yes"></iframe>
 
             <div class="nano-monitor" id="nano-monitor">
                 <div class="stat-group">
@@ -1509,6 +1552,38 @@
             </div>
             <div class="studio-modal-body">
                 <p id="project-update-copy" class="studio-modal-copy"></p>
+                <div id="update-source-list" class="update-source-list">
+                    <button id="update-source-github" class="update-source-card" type="button" data-update-source="github" onclick="setUpdateSource('github')">
+                        <div class="update-source-head">
+                            <div class="update-source-title">
+                                <strong>GitHub 下载源</strong>
+                                <span>GitHub API / raw 文件 / GitHub 网页，Google 仅作外网参考。</span>
+                            </div>
+                            <div class="update-source-head-right">
+                                <span class="update-source-check" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                </span>
+                                <span class="update-source-badge">待测试</span>
+                            </div>
+                        </div>
+                        <div class="connectivity-list" data-connectivity-source="github"></div>
+                    </button>
+                    <button id="update-source-modelscope" class="update-source-card" type="button" data-update-source="modelscope" onclick="setUpdateSource('modelscope')">
+                        <div class="update-source-head">
+                            <div class="update-source-title">
+                                <strong>ModelScope 下载源</strong>
+                                <span>ModelScope 空间与版本文件，适合国内网络。</span>
+                            </div>
+                            <div class="update-source-head-right">
+                                <span class="update-source-check" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                </span>
+                                <span class="update-source-badge">待测试</span>
+                            </div>
+                        </div>
+                        <div class="connectivity-list" data-connectivity-source="modelscope"></div>
+                    </button>
+                </div>
                 <div id="project-update-summary" class="update-modal-summary warn">
                     <span class="update-modal-dot" aria-hidden="true"></span>
                     <div>
@@ -1516,7 +1591,6 @@
                         <span id="project-update-summary-text"></span>
                     </div>
                 </div>
-                <div id="connectivity-list" class="connectivity-list"></div>
             </div>
             <div class="studio-modal-actions">
                 <button id="connectivity-test-btn" class="studio-modal-btn" type="button" onclick="runUpdateConnectivityTest()">
@@ -1562,6 +1636,8 @@
         let appInfo = { version:'', repo_url:PROJECT_URL, version_url:'https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main/VERSION' };
         let updateConnectivityResult = null;
         let projectUpdateRunning = false;
+        let projectUpdateAbort = null;  // 当前更新请求的 AbortController，便于用户中途取消
+        let updateSource = localStorage.getItem('studio_update_source') || 'github';
 
         function setSidebarPinned(pinned, options = {}) {
             const sidebar = document.getElementById('studioSidebar');
@@ -1854,8 +1930,8 @@
                 badge.textContent = 'v-';
             }
             badge.title = window.StudioI18n?.lang?.() === 'en'
-                ? `Current version: ${full}`
-                : `当前版本：${full}`;
+                ? `Current version: ${full} · click to check for updates`
+                : `当前版本：${full} · 点击检测更新`;
         }
 
         function refreshUpdateButtonText() {
@@ -1916,8 +1992,8 @@
             const isNetwork = (err instanceof TypeError) || /Failed to fetch|NetworkError|ERR_|timed? ?out|超时|无法连接|GitHub|HTTP 4|HTTP 5/i.test(msg);
             if(isNetwork){
                 return isEn
-                    ? 'Cannot reach GitHub. Please make sure this machine has internet access (and can reach github.com / raw.githubusercontent.com). If you are in a restricted network you may need a proxy or VPN.'
-                    : '无法连接 GitHub。请检查本机网络是否能访问外网（特别是 github.com / raw.githubusercontent.com）。如果在受限网络中，可能需要走代理或外网环境再试。';
+                    ? 'Cannot reach the selected update source. Check your network, proxy, or DNS, then try again.'
+                    : '无法连接当前选择的更新源。请检查网络、代理或 DNS 后重试。';
             }
             return msg || (isEn ? 'Update failed' : '更新失败');
         }
@@ -1926,11 +2002,46 @@
             return window.StudioI18n?.lang?.() === 'en' ? en : zh;
         }
 
+        function updateSourceLabel(source = updateSource) {
+            return source === 'modelscope' ? 'ModelScope' : 'GitHub';
+        }
+
+        function setUpdateSource(source) {
+            updateSource = source === 'modelscope' ? 'modelscope' : 'github';
+            localStorage.setItem('studio_update_source', updateSource);
+            refreshProjectUpdateModalText();
+        }
+
+        function sourceConnectivityStats(source, results = []) {
+            const sourceItems = (results || []).filter(item => item.source === source);
+            const required = sourceItems.filter(item => item.required);
+            const okRequired = required.length ? required.every(item => item.ok) : false;
+            const okItems = sourceItems.filter(item => item.ok);
+            const avg = okItems.length
+                ? Math.round(okItems.reduce((sum, item) => sum + Number(item.elapsed_ms || 0), 0) / okItems.length)
+                : 999999;
+            return {source, ok:okRequired, avg, okItems:okItems.length, total:sourceItems.length};
+        }
+
+        function bestUpdateSourceFromConnectivity(data) {
+            const results = data?.results || [];
+            const github = sourceConnectivityStats('github', results);
+            const ms = sourceConnectivityStats('modelscope', results);
+            if(github.ok && ms.ok) return ms.avg < github.avg ? 'modelscope' : 'github';
+            if(ms.ok) return 'modelscope';
+            if(github.ok) return 'github';
+            return updateSource;
+        }
+
         function updateTargetLabel(name) {
             const labels = {
                 'GitHub 更新列表': ['GitHub 更新列表', 'GitHub update API'],
                 'GitHub 版本文件': ['GitHub 版本文件', 'GitHub version file'],
                 'GitHub 主页': ['GitHub 主页', 'GitHub home page'],
+                'ModelScope 更新列表': ['ModelScope 更新列表', 'ModelScope update list'],
+                'ModelScope 版本文件': ['ModelScope 版本文件', 'ModelScope version file'],
+                'ModelScope 空间页面': ['ModelScope 空间页面', 'ModelScope space page'],
+                'ModelScope 主页': ['ModelScope 主页', 'ModelScope home page'],
                 'Google 连通性': ['Google 连通性', 'Google connectivity'],
             };
             const item = labels[name] || [name, name];
@@ -1940,6 +2051,7 @@
         function updateStatusLabel(item) {
             if(item.pending) return updateUiText('检测中...', 'Testing...');
             if(item.ok) return `${updateUiText('正常', 'OK')} · ${item.elapsed_ms || 0}ms`;
+            if(item.timed_out) return updateUiText('失败 · 超时', 'Failed · timeout');
             if(item.status) return `HTTP ${item.status}`;
             return updateUiText('失败', 'Failed');
         }
@@ -1957,20 +2069,27 @@
         }
 
         function updateConnectivityTargets() {
+            const sources = appInfo.sources || {};
+            const github = sources.github || {};
+            const ms = sources.modelscope || {};
             return [
-                { name:'GitHub 更新列表', url:appInfo.tree_url || 'https://api.github.com/repos/hero8152/Infinite-Canvas/git/trees/main?recursive=1' },
-                { name:'GitHub 版本文件', url:appInfo.version_url || 'https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main/VERSION' },
-                { name:'GitHub 主页', url:'https://github.com/' },
-                { name:'Google 连通性', url:'https://www.google.com/generate_204' },
+                { name:'GitHub 更新列表', url:github.tree_url || appInfo.tree_url || 'https://api.github.com/repos/hero8152/Infinite-Canvas/git/trees/main?recursive=1', source:'github', required:true },
+                { name:'GitHub 版本文件', url:github.version_url || appInfo.version_url || 'https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main/VERSION', source:'github', required:true },
+                { name:'GitHub 主页', url:'https://github.com/', source:'github' },
+                { name:'ModelScope 版本文件', url:ms.version_url || 'https://www.modelscope.cn/api/v1/studio/Daniel8152/Infinite-Canvas/repo?Revision=master&FilePath=VERSION', source:'modelscope', required:true },
+                { name:'ModelScope 空间页面', url:ms.repo_url || 'https://modelscope.cn/studios/Daniel8152/Infinite-Canvas', source:'modelscope' },
+                { name:'ModelScope 主页', url:'https://modelscope.cn/', source:'modelscope' },
+                { name:'Google 连通性', url:'https://www.google.com/generate_204', source:'reference' },
             ];
         }
 
         function renderConnectivityList(results = []) {
-            const list = document.getElementById('connectivity-list');
-            if(!list) return;
-            list.replaceChildren();
-            const items = results.length ? results : updateConnectivityTargets().map(item => ({...item, pending:false, untouched:true}));
-            items.forEach(item => {
+            const allItems = results.length ? results : updateConnectivityTargets().map(item => ({...item, pending:false, untouched:true}));
+            const renderInto = (list, source) => {
+                if(!list) return;
+                list.replaceChildren();
+                const items = allItems.filter(item => item.source === source || (source === 'github' && item.source === 'reference'));
+                items.forEach(item => {
                 const row = document.createElement('div');
                 row.className = `connectivity-row ${item.pending ? 'pending' : item.untouched ? '' : item.ok ? 'ok' : 'fail'}`;
                 const indicator = document.createElement('span');
@@ -1987,7 +2106,7 @@
                 status.className = 'connectivity-status';
                 status.textContent = item.untouched ? updateUiText('待测试', 'Not tested') : updateStatusLabel(item);
                 row.append(indicator, meta, status);
-                if(item.error) {
+                if(item.error && !item.timed_out) {
                     const error = document.createElement('div');
                     error.className = 'connectivity-error';
                     error.textContent = String(item.error).slice(0, 220);
@@ -1995,12 +2114,16 @@
                 }
                 list.append(row);
             });
+            };
+            renderInto(document.querySelector('[data-connectivity-source="github"]'), 'github');
+            renderInto(document.querySelector('[data-connectivity-source="modelscope"]'), 'modelscope');
         }
 
         function refreshProjectUpdateModalText() {
             const gitBtn = document.getElementById('github-entry-btn');
             const remoteVersion = gitBtn?.dataset.remoteVersion || '';
             const localVersion = gitBtn?.dataset.localVersion || appInfo.version || '';
+            const sourceName = updateSourceLabel();
             const title = remoteVersion
                 ? updateUiText(`更新到 ${versionLabel(remoteVersion)}`, `Update to ${versionLabel(remoteVersion)}`)
                 : updateUiText('一键更新', 'One-click update');
@@ -2011,9 +2134,25 @@
             const confirmText = document.getElementById('project-update-confirm-text');
             const closeBtn = document.querySelector('#project-update-modal .studio-modal-close');
             if(titleEl) titleEl.textContent = title;
+            document.querySelectorAll('[data-update-source]').forEach(card => {
+                const source = card.dataset.updateSource || 'github';
+                const active = source === updateSource;
+                card.classList.toggle('active', active);
+                card.setAttribute('aria-pressed', active ? 'true' : 'false');
+                const badge = card.querySelector('.update-source-badge');
+                if(badge) {
+                    if(!updateConnectivityResult) {
+                        setSourceBadge(badge, '', updateUiText('待测试', 'Not tested'));
+                    } else {
+                        const stats = sourceConnectivityStats(source, updateConnectivityResult.results || []);
+                        setSourceBadge(badge, stats.ok ? 'ok' : 'bad',
+                            stats.ok ? updateUiText('可用', 'Available') : updateUiText('不可用', 'Unavailable'));
+                    }
+                }
+            });
             if(copyEl) copyEl.textContent = updateUiText(
-                `将从 GitHub 更新 main.py、VERSION 和 static 文件。更新前会自动备份，更新完成后后端会自动重启。当前 ${versionLabel(localVersion)}，最新 ${versionLabel(remoteVersion || localVersion)}。`,
-                `This updates main.py, VERSION, and static files from GitHub. A backup is created first, then the backend restarts automatically. Current ${versionLabel(localVersion)}, latest ${versionLabel(remoteVersion || localVersion)}.`
+                `将从 ${sourceName} 更新 main.py、VERSION 和 static 文件。更新前会自动备份，更新完成后后端会自动重启。当前 ${versionLabel(localVersion)}，最新 ${versionLabel(remoteVersion || localVersion)}。`,
+                `This updates main.py, VERSION, and static files from ${sourceName}. A backup is created first, then the backend restarts automatically. Current ${versionLabel(localVersion)}, latest ${versionLabel(remoteVersion || localVersion)}.`
             );
             if(testText) testText.textContent = updateConnectivityResult ? updateUiText('重新测试', 'Retest') : updateUiText('测试连通性', 'Test connectivity');
             if(cancelText) cancelText.textContent = updateUiText('取消', 'Cancel');
@@ -2027,8 +2166,8 @@
                     'warn',
                     updateUiText('建议先测试连通性', 'Connectivity test recommended'),
                     updateUiText(
-                        '能打开 GitHub 网页不代表一定能更新，更新还需要访问 GitHub API 和 raw.githubusercontent.com。',
-                        'Opening github.com is not enough; updates also need the GitHub API and raw.githubusercontent.com.'
+                        '测试会同时测速 GitHub 和 ModelScope。你可以根据结果切换下载源。',
+                        'The test checks both GitHub and ModelScope. Choose the faster reachable source before updating.'
                     )
                 );
             } else if(updateConnectivityResult.backend_missing) {
@@ -2040,22 +2179,24 @@
                         'The page is updated, but the backend is still the old version and cannot find the connectivity-test API. Restart the service and try again.'
                     )
                 );
-            } else if(updateConnectivityResult.ok) {
+            } else if((updateConnectivityResult.sources || {})[updateSource]?.ok || (updateSource === 'github' && updateConnectivityResult.ok)) {
                 const google = (updateConnectivityResult.results || []).find(item => item.name === 'Google 连通性');
+                const sourceResults = (updateConnectivityResult.results || []).filter(item => item.source === updateSource);
+                const fastest = sourceResults.filter(item => item.ok).sort((a, b) => (a.elapsed_ms || 999999) - (b.elapsed_ms || 999999))[0];
                 setUpdateSummary(
                     google?.ok ? 'ok' : 'warn',
-                    updateUiText('更新节点可访问', 'Update endpoints reachable'),
-                    google?.ok
-                        ? updateUiText('GitHub 更新节点和 Google 都连通，可以开始更新。', 'GitHub update endpoints and Google are reachable.')
-                        : updateUiText('GitHub 更新节点可用；Google 不通只作为参考，不影响 GitHub 更新。', 'GitHub update endpoints are reachable; Google is only a reference check.')
+                    updateUiText(`${sourceName} 下载源可用`, `${sourceName} source reachable`),
+                    fastest
+                        ? updateUiText(`${sourceName} 可访问，最快节点约 ${fastest.elapsed_ms || 0}ms，可以开始更新。`, `${sourceName} is reachable; fastest endpoint is about ${fastest.elapsed_ms || 0}ms.`)
+                        : updateUiText(`${sourceName} 更新节点可用，可以开始更新。`, `${sourceName} update endpoints are reachable.`)
                 );
             } else {
                 setUpdateSummary(
                     'fail',
-                    updateUiText('更新节点不可用', 'Update endpoints unreachable'),
+                    updateUiText(`${sourceName} 下载源不可用`, `${sourceName} source unreachable`),
                     updateUiText(
-                        '当前网络无法访问更新必需节点。请检查代理、DNS 或网络环境后重试。',
-                        'This network cannot reach the required update endpoints. Check proxy, DNS, or network settings and try again.'
+                        `当前网络无法访问 ${sourceName} 必需节点。请切换下载源，或检查代理、DNS 后重试。`,
+                        `This network cannot reach required ${sourceName} endpoints. Switch source, or check proxy/DNS and try again.`
                     )
                 );
             }
@@ -2072,7 +2213,10 @@
         }
 
         function closeProjectUpdateModal() {
-            if(projectUpdateRunning) return;
+            // 更新进行中允许关闭：中止在途请求并恢复 UI，避免「卡在更新中、无法关闭」
+            if(projectUpdateRunning) {
+                try { projectUpdateAbort?.abort(); } catch(e) {}
+            }
             const modal = document.getElementById('project-update-modal');
             if(modal) modal.hidden = true;
         }
@@ -2089,47 +2233,128 @@
             openProjectUpdateModal();
         }
 
+        function computeConnectivitySources(results) {
+            const out = {};
+            for(const source of ['github', 'modelscope']) {
+                const reqAll = (results || []).filter(it => it.source === source && it.required);
+                out[source] = {
+                    ok: reqAll.length > 0 && reqAll.every(it => it.ok),
+                    required: reqAll.map(it => it.name),
+                };
+            }
+            return out;
+        }
+
+        function setSourceBadge(badge, state, text) {
+            if(!badge) return;
+            badge.classList.remove('ok', 'bad');
+            if(state) badge.classList.add(state);
+            badge.textContent = text;
+        }
+
+        function renderSourceBadgesLive(results) {
+            document.querySelectorAll('[data-update-source]').forEach(card => {
+                const source = card.dataset.updateSource || 'github';
+                const badge = card.querySelector('.update-source-badge');
+                if(!badge) return;
+                const items = (results || []).filter(it => it.source === source);
+                if(!items.length) return;
+                const done = items.filter(it => !it.pending && !it.untouched);
+                if(done.length < items.length) {
+                    setSourceBadge(badge, '', updateUiText(`检测中 ${done.length}/${items.length}`, `${done.length}/${items.length}`));
+                    return;
+                }
+                const stats = sourceConnectivityStats(source, results);
+                setSourceBadge(badge, stats.ok ? 'ok' : 'bad',
+                    stats.ok ? updateUiText('可用', 'Available') : updateUiText('不可用', 'Unavailable'));
+            });
+        }
+
+        let connectivityTesting = false;
         async function runUpdateConnectivityTest() {
+            if(connectivityTesting) return; // 防止重复点击导致状态错乱
             const isEn = window.StudioI18n?.lang?.() === 'en';
             const btn = document.getElementById('connectivity-test-btn');
             const text = document.getElementById('connectivity-test-text');
+            connectivityTesting = true;
             if(btn) btn.disabled = true;
             if(text) text.textContent = isEn ? 'Testing...' : '检测中...';
             updateConnectivityResult = null;
-            setUpdateSummary('warn', isEn ? 'Testing connectivity' : '正在测试连通性', isEn ? 'Checking GitHub update endpoints, GitHub home page, and Google.' : '正在检测 GitHub 更新节点、GitHub 主页和 Google。');
-            renderConnectivityList(updateConnectivityTargets().map(item => ({...item, pending:true})));
+
+            const targets = updateConnectivityTargets();
+            // 实时状态数组：先全部置为「检测中」，每条探测完成立即刷新对应行
+            const live = targets.map(item => ({...item, pending:true, untouched:false}));
+            let backendMissing = false;
+            const applyResult = (name, patch) => {
+                const i = live.findIndex(x => x.name === name);
+                if(i < 0) return;
+                live[i] = {...live[i], pending:false, untouched:false, ...patch};
+                renderConnectivityList(live);
+                renderSourceBadgesLive(live);
+            };
+
+            const probeOne = async (t) => {
+                // 客户端兜底超时：5s 探测 + 1s 网络余量，超时即报「超时」，不会永远卡在「检测中」
+                const ac = new AbortController();
+                const killer = setTimeout(() => ac.abort(), 6000);
+                try {
+                    const res = await fetch(`/api/update-connectivity/probe?name=${encodeURIComponent(t.name)}`, { cache:'no-store', signal:ac.signal });
+                    const data = await res.json().catch(() => ({}));
+                    // 旧后端没有单条探测接口 → 404 Not Found，标记后回退到整体接口
+                    if(res.status === 404 && (data.detail === 'Not Found' || data.detail === undefined)) {
+                        backendMissing = true;
+                        return;
+                    }
+                    if(res.ok) {
+                        applyResult(t.name, { ok:!!data.ok, status:data.status || 0, elapsed_ms:data.elapsed_ms || 0, error:data.error || '', timed_out:!!data.timed_out });
+                    } else {
+                        applyResult(t.name, { ok:false, error:data.detail || (isEn ? 'Failed' : '失败') });
+                    }
+                } catch(e) {
+                    if(e && e.name === 'AbortError') {
+                        applyResult(t.name, { ok:false, timed_out:true, error:isEn ? 'Timed out (over 5s)' : '连接超时（超过 5s）' });
+                    } else {
+                        applyResult(t.name, { ok:false, error:describeNetworkError(e, isEn) });
+                    }
+                } finally {
+                    clearTimeout(killer);
+                }
+            };
+
             try {
-                const res = await fetch('/api/update-connectivity', { cache:'no-store' });
-                const data = await res.json().catch(() => ({}));
-                if(res.status === 404) {
+                setUpdateSummary('warn', isEn ? 'Testing connectivity' : '正在测试连通性', isEn ? 'Probing each endpoint — results stream in live.' : '正在逐条检测各节点，结果实时显示。');
+                renderConnectivityList(live);
+                renderSourceBadgesLive(live);
+                await Promise.all(targets.map(probeOne));
+
+                if(backendMissing) {
+                    // 兜底：尝试旧的整体接口
+                    try {
+                        const res = await fetch('/api/update-connectivity', { cache:'no-store' });
+                        const data = await res.json().catch(() => ({}));
+                        if(res.ok && Array.isArray(data.results)) {
+                            updateConnectivityResult = data;
+                            setUpdateSource(bestUpdateSourceFromConnectivity(data));
+                            return;
+                        }
+                    } catch(e) {}
                     const message = isEn
                         ? 'The backend has not loaded the new connectivity-test API yet. Restart the backend service, then test again.'
                         : '后端还没有加载新的连通性测试接口。请重启服务后再测试。';
                     updateConnectivityResult = {
                         ok:false,
                         backend_missing:true,
-                        results:updateConnectivityTargets().map(item => ({
-                            ...item,
-                            ok:false,
-                            elapsed_ms:0,
-                            error:message
-                        }))
+                        results:targets.map(item => ({...item, ok:false, elapsed_ms:0, error:message })),
                     };
                     return;
                 }
-                if(!res.ok) throw new Error(data.detail || (isEn ? 'Connectivity test failed' : '连通性测试失败'));
-                updateConnectivityResult = data;
-            } catch(e) {
-                updateConnectivityResult = {
-                    ok:false,
-                    results:updateConnectivityTargets().map(item => ({
-                        ...item,
-                        ok:false,
-                        elapsed_ms:0,
-                        error:describeNetworkError(e, isEn)
-                    }))
-                };
+
+                const results = live.map(({pending, untouched, ...rest}) => rest);
+                const sources = computeConnectivitySources(results);
+                updateConnectivityResult = { results, sources, ok:sources.github.ok };
+                setUpdateSource(bestUpdateSourceFromConnectivity(updateConnectivityResult));
             } finally {
+                connectivityTesting = false;
                 if(btn) btn.disabled = false;
                 refreshProjectUpdateModalText();
             }
@@ -2149,34 +2374,49 @@
             if(testBtn) testBtn.disabled = true;
             if(text) text.textContent = isEn ? 'Updating...' : '更新中...';
             if(confirmText) confirmText.textContent = isEn ? 'Updating...' : '更新中...';
-            setUpdateSummary('warn', isEn ? 'Updating' : '正在更新', isEn ? 'Downloading files from GitHub and creating a local backup.' : '正在从 GitHub 下载文件，并创建本地备份。');
+            const sourceName = updateSourceLabel();
+            setUpdateSummary('warn', isEn ? 'Updating' : '正在更新', isEn ? `Downloading files from ${sourceName} and creating a local backup.` : `正在从 ${sourceName} 下载文件，并创建本地备份。`);
+            // 客户端兜底超时：即使后端异常挂起，UI 也能恢复，不会永远停在「更新中」
+            const ac = new AbortController();
+            const killer = setTimeout(() => ac.abort(), 300000);
             try {
                 const res = await fetch('/api/update-from-github', {
                     method:'POST',
                     headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({ auto_restart:true, restart_delay:3 })
+                    body:JSON.stringify({ auto_restart:true, restart_delay:3, source:updateSource, fallback:true }),
+                    signal:ac.signal
                 });
                 const data = await res.json().catch(() => ({}));
                 if(!res.ok) throw new Error(data.detail || (isEn ? 'Update failed' : '更新失败'));
                 const restarting = data.restart_scheduled;
+                const usedLabel = data.source_label || (data.source === 'modelscope' ? 'ModelScope' : 'GitHub');
+                const fallbackNote = data.fallback_used
+                    ? (isEn
+                        ? ` (${sourceName} was unreachable, so it fell back to ${usedLabel})`
+                        : `（${sourceName} 不可用，已自动兜底切换到 ${usedLabel}）`)
+                    : '';
                 setUpdateSummary(
                     'ok',
                     isEn ? 'Update complete' : '更新完成',
-                    restarting
+                    (restarting
                         ? (isEn
                             ? `Updated ${data.count || 0} files. The backend will restart in about 3 seconds; this page will reload when it returns.`
                             : `已更新 ${data.count || 0} 个文件。后端将在约 3 秒后自动重启，本页面会在恢复后自动刷新。`)
                         : (isEn
                             ? `Updated ${data.count || 0} files. Please restart the backend, then refresh this page.`
-                            : `已更新 ${data.count || 0} 个文件。请重启后端，然后刷新页面。`)
+                            : `已更新 ${data.count || 0} 个文件。请重启后端，然后刷新页面。`)) + fallbackNote
                 );
                 document.getElementById('github-entry-btn')?.classList.remove('update-available');
                 btn?.classList.remove('show');
                 setProjectVersionBadge(data.version || document.getElementById('github-entry-btn')?.dataset.remoteVersion || appInfo.version);
                 if(restarting) waitForBackendAndReload();
             } catch(e) {
-                setUpdateSummary('fail', isEn ? 'Update failed' : '更新失败', describeNetworkError(e, isEn));
+                const msg = (e && e.name === 'AbortError')
+                    ? (isEn ? 'Update timed out. Switch source or check your network, then retry.' : '更新超时。请切换下载源或检查网络后重试。')
+                    : describeNetworkError(e, isEn);
+                setUpdateSummary('fail', isEn ? 'Update failed' : '更新失败', msg);
             } finally {
+                clearTimeout(killer);
                 projectUpdateRunning = false;
                 if(btn) btn.disabled = false;
                 if(confirmBtn) confirmBtn.disabled = false;
@@ -2233,17 +2473,63 @@
         }
         window.rollbackProjectUpdate = rollbackProjectUpdate;
 
-        async function checkForUpdates() {
+        async function checkForUpdates(manual = false) {
+            const isEn = window.StudioI18n?.lang?.() === 'en';
+            const badge = document.getElementById('project-version-badge');
+            if(manual && badge) badge.classList.add('checking');
             try {
-                const info = await fetch('/api/app-info', { cache:'no-store' }).then(r => r.json());
+                const info = await fetch('/api/app-info', { cache:'no-store' }).then(r => r.json()).catch(() => ({}));
                 appInfo = {...appInfo, ...info};
-                const current = String(appInfo.version || '').trim();
+                let current = String(appInfo.version || '').trim();
                 setProjectVersionBadge(current);
-                const remoteText = await fetch(`${appInfo.version_url || ''}?t=${Date.now()}`, { cache:'no-store' }).then(r => r.ok ? r.text() : '');
-                const remote = String(remoteText || '').trim().split(/\r?\n/)[0].trim();
-                if(current && remote && compareVersions(remote, current) > 0) showUpdateNotice(current, remote);
+                let best = null;
+                let reachable = false;
+                let serverChecked = false;
+                // 优先走后端检测：服务端用系统代理同时检测 GitHub 和 ModelScope，避免浏览器跨域/被墙
+                try {
+                    const r = await fetch('/api/check-update', { cache:'no-store' });
+                    if(r.ok) {
+                        const d = await r.json();
+                        serverChecked = true;
+                        reachable = !!d.reachable;
+                        if(d.current) { current = String(d.current).trim(); setProjectVersionBadge(current); }
+                        if(d.latest?.version) best = {source:d.latest.source, version:d.latest.version};
+                    }
+                } catch(e) {}
+                // 兜底：旧后端无 /api/check-update 时，浏览器直接拉取双源 VERSION
+                if(!serverChecked) {
+                    const sources = appInfo.sources || {};
+                    const candidates = [
+                        {source:'github', url:sources.github?.version_url || appInfo.version_url || ''},
+                        {source:'modelscope', url:sources.modelscope?.version_url || ''},
+                    ].filter(item => item.url);
+                    for(const item of candidates) {
+                        try {
+                            const remoteText = await fetch(`${item.url}${item.url.includes('?') ? '&' : '?'}t=${Date.now()}`, { cache:'no-store' }).then(r => r.ok ? r.text() : '');
+                            const remote = String(remoteText || '').trim().split(/\r?\n/)[0].trim();
+                            if(remote){ reachable = true; if(!best || compareVersions(remote, best.version) > 0) best = {source:item.source, version:remote}; }
+                        } catch(e) {}
+                    }
+                }
+                const hasUpdate = !!(current && best?.version && compareVersions(best.version, current) > 0);
+                if(hasUpdate) {
+                    if(best.source === 'modelscope') setUpdateSource('modelscope');
+                    showUpdateNotice(current, best.version);
+                }
+                if(manual) {
+                    if(hasUpdate) {
+                        openProjectUpdateModal();
+                    } else if(reachable) {
+                        alert(isEn ? `You are on the latest version (${versionLabel(current)}).` : `已是最新版本（${versionLabel(current)}）。`);
+                    } else {
+                        alert(isEn ? 'Could not reach GitHub or ModelScope. Check your network/proxy and try again.' : '无法连接 GitHub 或 ModelScope 更新源，请检查网络或代理后重试。');
+                    }
+                }
             } catch(e) {
                 // 离线包里没有网络时保持安静，不影响本地使用。
+                if(manual) alert(isEn ? 'Update check failed.' : '检测更新失败。');
+            } finally {
+                if(badge) badge.classList.remove('checking');
             }
         }
     </script>

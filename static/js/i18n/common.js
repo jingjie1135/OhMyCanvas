@@ -28,6 +28,15 @@
         "nav.online": { zh: "在线生图", en: "Online Image" },
         "nav.gpt": { zh: "GPT 对话", en: "GPT Chat" },
         "nav.canvas": { zh: "无限画布", en: "Infinite Canvas" },
-        "nav.assetManager": { zh: "素材库", en: "Assets" }
+        "nav.assetManager": { zh: "素材库", en: "Assets" },
+        "bulk.manage": { zh: "管理", en: "Manage" },
+        "bulk.selectAll": { zh: "全选", en: "Select All" },
+        "bulk.deselectAll": { zh: "取消全选", en: "Deselect All" },
+        "bulk.deleteSelected": { zh: "删除所选", en: "Delete" },
+        "bulk.exit": { zh: "完成", en: "Done" },
+        "bulk.selectedCount": { zh: "已选 {n} 张", en: "{n} selected" },
+        "bulk.deleteConfirm": { zh: "确认删除选中的 {n} 张图片？此操作不可恢复。", en: "Delete the selected {n} image(s)? This cannot be undone." },
+        "bulk.deleting": { zh: "删除中…", en: "Deleting…" },
+        "bulk.noSelection": { zh: "请先选择要删除的图片", en: "Select images to delete first" }
     });
 })();
