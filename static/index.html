@@ -1067,6 +1067,19 @@
             cursor:wait;
         }
 
+        #project-update-confirm-btn[disabled] {
+            background:#94a3b8;
+            border-color:#94a3b8;
+            color:#fff;
+            cursor:not-allowed;
+        }
+
+        #project-update-confirm-btn[disabled]:hover {
+            background:#94a3b8;
+            border-color:#94a3b8;
+            box-shadow:none;
+        }
+
         html.theme-dark .studio-modal,
         body.theme-dark .studio-modal {
             background:rgba(2,6,23,.56);
@@ -1603,12 +1616,12 @@
                 <button class="studio-modal-btn" type="button" onclick="closeProjectUpdateModal()">
                     <span id="project-update-cancel-text">取消</span>
                 </button>
-                <button id="project-update-confirm-btn" class="studio-modal-btn primary" type="button" onclick="confirmProjectUpdate()">
+                <button id="project-update-confirm-btn" class="studio-modal-btn primary" type="button" disabled aria-disabled="true" onclick="confirmProjectUpdate()">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
                         <path d="M21 3v6h-6"></path>
                     </svg>
-                    <span id="project-update-confirm-text">开始更新</span>
+                    <span id="project-update-confirm-text">已禁用</span>
                 </button>
             </div>
         </div>
@@ -1638,6 +1651,9 @@
         let projectUpdateRunning = false;
         let projectUpdateAbort = null;  // 当前更新请求的 AbortController，便于用户中途取消
         let updateSource = localStorage.getItem('studio_update_source') || 'github';
+        const PROJECT_UPDATE_DISABLED = true;
+        const PROJECT_UPDATE_DISABLED_ZH = 'OhMyCanvas 二开版本已禁用内置一键更新，请通过 Git 手动同步上游，避免覆盖本地二开改动。';
+        const PROJECT_UPDATE_DISABLED_EN = 'Built-in one-click update is disabled for this OhMyCanvas fork. Sync upstream manually with Git to avoid overwriting fork customizations.';
 
         function setSidebarPinned(pinned, options = {}) {
             const sidebar = document.getElementById('studioSidebar');
@@ -1941,6 +1957,13 @@
             const remoteVersion = document.getElementById('github-entry-btn')?.dataset.remoteVersion || '';
             const isEn = window.StudioI18n?.lang?.() === 'en';
             text.removeAttribute('data-i18n');
+            if(PROJECT_UPDATE_DISABLED) {
+                text.textContent = isEn ? 'View update' : '查看更新';
+                btn.setAttribute('aria-label', remoteVersion
+                    ? (isEn ? `View update ${versionLabel(remoteVersion)}` : `查看更新 ${versionLabel(remoteVersion)}`)
+                    : text.textContent);
+                return;
+            }
             if(remoteVersion) {
                 const prefix = isEn ? 'Update to' : '更新到';
                 text.replaceChildren();
@@ -1971,9 +1994,11 @@
                 ? `Current ${versionLabel(gitBtn.dataset.localVersion || appInfo.version)} · latest ${versionLabel(remoteVersion)}`
                 : `当前 ${versionLabel(gitBtn.dataset.localVersion || appInfo.version)} · 最新 ${versionLabel(remoteVersion)}`;
             const updateBtn = document.getElementById('update-now-btn');
-            if(updateBtn) updateBtn.title = remoteVersion
-                ? (isEn ? `Update to ${versionLabel(remoteVersion)}` : `更新到 ${versionLabel(remoteVersion)}`)
-                : (isEn ? 'Update main.py and static files from GitHub' : '从 GitHub 更新 main.py 和 static 文件');
+            if(updateBtn) updateBtn.title = PROJECT_UPDATE_DISABLED
+                ? (isEn ? 'View upstream update; one-click update is disabled for this fork' : '查看上游更新；二开版本已禁用一键更新')
+                : (remoteVersion
+                    ? (isEn ? `Update to ${versionLabel(remoteVersion)}` : `更新到 ${versionLabel(remoteVersion)}`)
+                    : (isEn ? 'Update main.py and static files from GitHub' : '从 GitHub 更新 main.py 和 static 文件'));
             refreshUpdateButtonText();
         }
 
@@ -2000,6 +2025,10 @@
 
         function updateUiText(zh, en) {
             return window.StudioI18n?.lang?.() === 'en' ? en : zh;
+        }
+
+        function projectUpdateDisabledMessage() {
+            return updateUiText(PROJECT_UPDATE_DISABLED_ZH, PROJECT_UPDATE_DISABLED_EN);
         }
 
         function updateSourceLabel(source = updateSource) {
@@ -2131,6 +2160,7 @@
             const copyEl = document.getElementById('project-update-copy');
             const testText = document.getElementById('connectivity-test-text');
             const cancelText = document.getElementById('project-update-cancel-text');
+            const confirmBtn = document.getElementById('project-update-confirm-btn');
             const confirmText = document.getElementById('project-update-confirm-text');
             const closeBtn = document.querySelector('#project-update-modal .studio-modal-close');
             if(titleEl) titleEl.textContent = title;
@@ -2150,18 +2180,34 @@
                     }
                 }
             });
-            if(copyEl) copyEl.textContent = updateUiText(
-                `将从 ${sourceName} 更新 main.py、VERSION 和 static 文件。更新前会自动备份，更新完成后后端会自动重启。当前 ${versionLabel(localVersion)}，最新 ${versionLabel(remoteVersion || localVersion)}。`,
-                `This updates main.py, VERSION, and static files from ${sourceName}. A backup is created first, then the backend restarts automatically. Current ${versionLabel(localVersion)}, latest ${versionLabel(remoteVersion || localVersion)}.`
-            );
+            if(copyEl) copyEl.textContent = PROJECT_UPDATE_DISABLED
+                ? updateUiText(
+                    `已检测到上游版本信息，但内置一键更新已禁用，以免从原项目覆盖 OhMyCanvas 二开改动。当前 ${versionLabel(localVersion)}，最新 ${versionLabel(remoteVersion || localVersion)}。如需同步，请使用 Git 手动合并上游。`,
+                    `An upstream version is available, but built-in one-click update is disabled to avoid overwriting OhMyCanvas fork customizations. Current ${versionLabel(localVersion)}, latest ${versionLabel(remoteVersion || localVersion)}. Sync upstream manually with Git.`
+                )
+                : updateUiText(
+                    `将从 ${sourceName} 更新 main.py、VERSION 和 static 文件。更新前会自动备份，更新完成后后端会自动重启。当前 ${versionLabel(localVersion)}，最新 ${versionLabel(remoteVersion || localVersion)}。`,
+                    `This updates main.py, VERSION, and static files from ${sourceName}. A backup is created first, then the backend restarts automatically. Current ${versionLabel(localVersion)}, latest ${versionLabel(remoteVersion || localVersion)}.`
+                );
             if(testText) testText.textContent = updateConnectivityResult ? updateUiText('重新测试', 'Retest') : updateUiText('测试连通性', 'Test connectivity');
             if(cancelText) cancelText.textContent = updateUiText('取消', 'Cancel');
-            if(confirmText && !projectUpdateRunning) confirmText.textContent = updateUiText('开始更新', 'Start update');
+            if(confirmBtn) {
+                confirmBtn.disabled = PROJECT_UPDATE_DISABLED || projectUpdateRunning;
+                confirmBtn.setAttribute('aria-disabled', confirmBtn.disabled ? 'true' : 'false');
+                confirmBtn.title = PROJECT_UPDATE_DISABLED ? projectUpdateDisabledMessage() : updateUiText('开始更新', 'Start update');
+            }
+            if(confirmText && !projectUpdateRunning) confirmText.textContent = PROJECT_UPDATE_DISABLED ? updateUiText('已禁用', 'Disabled') : updateUiText('开始更新', 'Start update');
             if(closeBtn) {
                 closeBtn.title = updateUiText('关闭', 'Close');
                 closeBtn.setAttribute('aria-label', closeBtn.title);
             }
-            if(!updateConnectivityResult) {
+            if(PROJECT_UPDATE_DISABLED) {
+                setUpdateSummary(
+                    'warn',
+                    updateUiText('一键更新已禁用', 'One-click update disabled'),
+                    projectUpdateDisabledMessage()
+                );
+            } else if(!updateConnectivityResult) {
                 setUpdateSummary(
                     'warn',
                     updateUiText('建议先测试连通性', 'Connectivity test recommended'),
@@ -2367,6 +2413,12 @@
             const confirmBtn = document.getElementById('project-update-confirm-btn');
             const confirmText = document.getElementById('project-update-confirm-text');
             const testBtn = document.getElementById('connectivity-test-btn');
+            if(PROJECT_UPDATE_DISABLED) {
+                if(confirmBtn) confirmBtn.disabled = true;
+                if(confirmText) confirmText.textContent = isEn ? 'Disabled' : '已禁用';
+                setUpdateSummary('warn', isEn ? 'One-click update disabled' : '一键更新已禁用', projectUpdateDisabledMessage());
+                return;
+            }
             const oldText = text?.textContent || '';
             projectUpdateRunning = true;
             if(btn) btn.disabled = true;
@@ -2419,10 +2471,10 @@
                 clearTimeout(killer);
                 projectUpdateRunning = false;
                 if(btn) btn.disabled = false;
-                if(confirmBtn) confirmBtn.disabled = false;
+                if(confirmBtn) confirmBtn.disabled = PROJECT_UPDATE_DISABLED;
                 if(testBtn) testBtn.disabled = false;
                 if(text) text.textContent = oldText || (isEn ? 'Update' : '一键更新');
-                if(confirmText) confirmText.textContent = isEn ? 'Start update' : '开始更新';
+                if(confirmText) confirmText.textContent = PROJECT_UPDATE_DISABLED ? (isEn ? 'Disabled' : '已禁用') : (isEn ? 'Start update' : '开始更新');
                 refreshUpdateButtonText();
             }
         }

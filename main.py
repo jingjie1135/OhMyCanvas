@@ -171,6 +171,8 @@ MODELSCOPE_RAW_ROOT = "https://www.modelscope.ai/studios/daniel8152/Infinite-Can
 MODELSCOPE_FILE_API_ROOT = "https://www.modelscope.ai/api/v1/studio/daniel8152/Infinite-Canvas/repo?Revision=master&FilePath="
 MODELSCOPE_VERSION_URL = MODELSCOPE_FILE_API_ROOT + "VERSION"
 MODELSCOPE_TREE_URL = "https://www.modelscope.ai/api/v1/studio/daniel8152/Infinite-Canvas/repo/files?Revision=master&Recursive=true"
+PROJECT_UPDATE_DISABLED = True
+PROJECT_UPDATE_DISABLED_DETAIL = "OhMyCanvas 二开版本已禁用内置一键更新，请通过 Git 手动同步上游，避免覆盖本地二开改动。"
 
 @app.on_event("startup")
 async def startup_event():
@@ -1893,6 +1895,8 @@ def stage_update_from_source(source: str, staging_root: str) -> Tuple[List[str],
 
 @app.post("/api/update-from-github")
 def update_from_github(req: UpdateRequest = UpdateRequest()):
+    if PROJECT_UPDATE_DISABLED:
+        raise HTTPException(status_code=403, detail=PROJECT_UPDATE_DISABLED_DETAIL)
     if not UPDATE_LOCK.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="正在更新中，请稍后再试")
     staging_root = ""
