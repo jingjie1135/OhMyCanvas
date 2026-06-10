@@ -522,6 +522,7 @@ body.studio-theme-dark .rh-editor-gnode.cat-audio rect { fill:#1a2845; stroke:#6
 body.show-ms #probeAsyncBtn,
 body.show-ms .advanced-endpoints,
 body.show-ms .protocol-selector-wrap,
+body.show-ms .image-request-mode-wrap,
 body.show-runninghub #testUrlBtn,
 body.show-runninghub #verifyResult,
 body.show-runninghub #modelsHead,
@@ -529,17 +530,28 @@ body.show-runninghub .model-grid,
 body.show-runninghub #probeAsyncBtn,
 body.show-runninghub .advanced-endpoints,
 body.show-runninghub .protocol-selector-wrap,
+body.show-runninghub .image-request-mode-wrap,
 body.show-volcengine-standalone #probeAsyncBtn,
 body.show-volcengine-standalone .protocol-selector-wrap,
+body.show-volcengine-standalone .image-request-mode-wrap,
 body.show-jimeng #probeAsyncBtn,
-body.show-jimeng .advanced-endpoints { display:none !important; }
-.protocol-selector-wrap { height:36px; padding:0 4px; flex-shrink:0; background:var(--panel); }
+body.show-jimeng .advanced-endpoints,
+body.show-jimeng .image-request-mode-wrap { display:none !important; }
+.protocol-selector-wrap,
+.image-request-mode-wrap { height:36px; padding:0 4px; flex-shrink:0; background:var(--panel); }
 body.studio-theme-dark .protocol-selector-wrap,
-html.studio-theme-dark body .protocol-selector-wrap { background:var(--soft); border-color:var(--line-strong); }
-.protocol-selector-wrap select { height:30px; min-width:116px; padding:0 26px 0 10px; border:0; border-radius:8px; background:transparent; color:var(--text); outline:none; font-size:12px; font-weight:800; white-space:nowrap; cursor:pointer; }
-.protocol-selector-wrap select:hover { background:var(--soft); }
+html.studio-theme-dark body .protocol-selector-wrap,
+body.studio-theme-dark .image-request-mode-wrap,
+html.studio-theme-dark body .image-request-mode-wrap { background:var(--soft); border-color:var(--line-strong); }
+.protocol-selector-wrap select,
+.image-request-mode-wrap select { height:30px; min-width:116px; padding:0 26px 0 10px; border:0; border-radius:8px; background:transparent; color:var(--text); outline:none; font-size:12px; font-weight:800; white-space:nowrap; cursor:pointer; }
+.image-request-mode-wrap select { min-width:150px; }
+.protocol-selector-wrap select:hover,
+.image-request-mode-wrap select:hover { background:var(--soft); }
 body.studio-theme-dark .protocol-selector-wrap select:hover,
-html.studio-theme-dark body .protocol-selector-wrap select:hover { background:var(--panel); }
+html.studio-theme-dark body .protocol-selector-wrap select:hover,
+body.studio-theme-dark .image-request-mode-wrap select:hover,
+html.studio-theme-dark body .image-request-mode-wrap select:hover { background:var(--panel); }
 .ms-hint .ms-line { display:block; }
 .ms-hint .inline-code { display:inline-flex; align-items:center; min-height:20px; padding:0 7px; border-radius:6px; background:var(--panel); color:var(--text); border:1px solid var(--line); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:700; vertical-align:middle; }
 .empty { padding:18px; border:1px dashed var(--line); border-radius:11px; color:var(--faint); text-align:center; font-size:11.5px; font-weight:700; }
@@ -5275,4 +5287,36 @@ html.studio-theme-dark body .api-link-btn::after {
     .recommend-guide-arrow span {
         animation:none !important;
     }
+}
+
+.recommend-tag.recommend-free-tag,
+body:not(.studio-theme-dark) .recommend-tag.recommend-free-tag,
+html:not(.studio-theme-dark) body:not(.theme-dark) .recommend-tag.recommend-free-tag {
+    background:rgba(16,185,129,.08) !important;
+    border-color:rgba(16,185,129,.42) !important;
+    color:#059669 !important;
+}
+
+.recommend-tag.recommend-free-tag > span,
+.recommend-tag.recommend-free-tag i,
+.recommend-tag.recommend-free-tag svg {
+    color:#059669 !important;
+    stroke:#059669 !important;
+}
+
+body.studio-theme-dark .recommend-tag.recommend-free-tag,
+html.studio-theme-dark body .recommend-tag.recommend-free-tag {
+    background:rgba(52,211,153,.1) !important;
+    border-color:rgba(52,211,153,.5) !important;
+    color:#34d399 !important;
+}
+
+body.studio-theme-dark .recommend-tag.recommend-free-tag > span,
+body.studio-theme-dark .recommend-tag.recommend-free-tag i,
+body.studio-theme-dark .recommend-tag.recommend-free-tag svg,
+html.studio-theme-dark body .recommend-tag.recommend-free-tag > span,
+html.studio-theme-dark body .recommend-tag.recommend-free-tag i,
+html.studio-theme-dark body .recommend-tag.recommend-free-tag svg {
+    color:#34d399 !important;
+    stroke:#34d399 !important;
 }

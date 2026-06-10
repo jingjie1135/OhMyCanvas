@@ -16,6 +16,7 @@
         "common.close": { zh: "关闭", en: "Close" },
         "common.loading": { zh: "加载中...", en: "Loading..." },
         "common.project": { zh: "项目主页", en: "Project" },
+        "common.moreSettings": { zh: "更多设置", en: "More Settings" },
         "update.available": { zh: "发现更新", en: "Update Available" },
         "update.openProject": { zh: "打开项目", en: "Open Project" },
         "update.oneClick": { zh: "一键更新", en: "Update" },

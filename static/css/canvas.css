@@ -715,6 +715,7 @@ input[type=range].canvas-range::-webkit-slider-runnable-track { height:3px; bord
 .canvas-asset-file-thumb span { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .canvas-asset-meta { min-width:0; display:flex; align-items:center; gap:4px; padding:6px; border-top:1px solid var(--line); }
 .canvas-asset-name { flex:1; min-width:0; color:var(--text); font-size:11px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.canvas-asset-local-tag { flex:0 0 auto; height:20px; padding:0 7px; border-radius:999px; display:inline-flex; align-items:center; background:var(--soft); border:1px solid var(--line); color:var(--faint); font-size:9px; font-weight:900; }
 .canvas-asset-action { width:26px; height:26px; flex:0 0 26px; border-radius:9px; border:1px solid transparent; background:transparent; color:var(--muted); display:flex; align-items:center; justify-content:center; }
 .canvas-asset-action:hover { color:var(--text); background:var(--soft); border-color:var(--line); }
 .canvas-asset-action.danger { color:var(--muted); }

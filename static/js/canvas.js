@@ -234,6 +234,8 @@ let canvasAssetLibrary = {categories:[]};
 let canvasAssetLibraryOpen = false;
 let activeCanvasAssetLibraryId = '';
 let activeCanvasAssetCategoryId = '';
+const LOCAL_CANVAS_ASSET_LIBRARY_ID = '__local_assets__';
+let localCanvasAssetLibrary = {items:[], tree:null};
 let assetManagerTab = 'assets';
 let managerSelectedAssetIds = new Set();
 let managerSelectedWorkflowIds = new Set();
@@ -324,7 +326,9 @@ const DEFAULT_VIDEO_MODELS = [
     'doubao-seedance-1-5-pro-251215',
     'doubao-seedance-1-0-pro-250528',
     'doubao-seedance-1-0-lite-t2v-250428',
-    'doubao-seedance-1-0-lite-i2v-250428'
+    'doubao-seedance-1-0-lite-i2v-250428',
+    // Agnes
+    'agnes-video-v2.0'
 ];
 
 function uid(prefix='n'){ return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`; }
@@ -5808,7 +5812,35 @@ function refreshPromptCounter(container, text){
 function canvasAssetLibraries(){
     return Array.isArray(canvasAssetLibrary.libraries) && canvasAssetLibrary.libraries.length ? canvasAssetLibrary.libraries : [{id:'default', name:'默认资产库', categories:canvasAssetLibrary.categories || []}];
 }
+function localCanvasAssetFolderCategories(){
+    const result = [];
+    const walk = node => {
+        if(!node) return;
+        const isRoot = (node.id || node.path || '__root__') === '__root__';
+        result.push({
+            id: node.id || (node.path ? node.path : '__root__'),
+            name: node.name || (node.path ? node.path.split('/').pop() : '全部上传'),
+            type: 'image',
+            items: (isRoot ? (localCanvasAssetLibrary.items || []) : (node.items || [])).filter(item => canvasAssetItemKind(item) === 'image'),
+            readonly: true,
+            source: 'local',
+        });
+        (node.children || []).forEach(walk);
+    };
+    walk(localCanvasAssetLibrary.tree || {id:'__root__', name:'全部上传', items:localCanvasAssetLibrary.items || [], children:[]});
+    return result.filter(cat => cat.id === '__root__' || cat.items.length || (localCanvasAssetLibrary.tree?.children || []).length);
+}
+function canvasAssetLibraryIsLocal(){
+    return activeCanvasAssetLibraryId === LOCAL_CANVAS_ASSET_LIBRARY_ID;
+}
+function canvasAssetSourceLibraries(){
+    return [
+        ...canvasAssetLibraries(),
+        {id:LOCAL_CANVAS_ASSET_LIBRARY_ID, name:'本地素材', categories:localCanvasAssetFolderCategories(), readonly:true, source:'local'}
+    ];
+}
 function activeCanvasAssetLibrary(){
+    if(canvasAssetLibraryIsLocal()) return canvasAssetSourceLibraries().find(lib => lib.id === LOCAL_CANVAS_ASSET_LIBRARY_ID);
     const libs = canvasAssetLibraries();
     return libs.find(lib => lib.id === activeCanvasAssetLibraryId) || libs[0] || null;
 }
@@ -5840,7 +5872,9 @@ function activeCanvasWorkflowCategory(){
     return cats.find(cat => cat.id === activeCanvasWorkflowCategoryId) || cats[0] || null;
 }
 function currentCanvasAssetItem(itemId){
-    return (activeCanvasAssetCategory()?.items || []).find(item => item.id === itemId) || null;
+    return (activeCanvasAssetCategory()?.items || []).find(item => item.id === itemId)
+        || (activeCanvasWorkflowCategory()?.items || []).find(item => item.id === itemId)
+        || null;
 }
 function canvasAssetItemKind(item){
     const explicit = String(item?.kind || item?.mediaKind || '').toLowerCase();
@@ -5933,17 +5967,22 @@ async function deleteCanvasAssetItem(itemId){
     const data = await fetch(`/api/asset-library/items/${encodeURIComponent(item.id)}`, {method:'DELETE'}).then(r => r.json());
     canvasAssetLibrary = data.library || canvasAssetLibrary;
     managerSelectedAssetIds.delete(item.id);
+    managerSelectedWorkflowIds.delete(item.id);
     hideCanvasAssetHoverPreview();
     renderCanvasAssetLibrary();
     if(assetManagerModal?.classList.contains('open')) renderAssetManager();
 }
 async function loadCanvasAssetLibrary({renderPanel=true}={}){
     try {
-        const data = await fetch('/api/asset-library').then(r => r.json());
+        const [data, localData] = await Promise.all([
+            fetch('/api/asset-library').then(r => r.json()),
+            fetch('/api/local-assets').then(r => r.ok ? r.json() : {items:[], tree:null}).catch(() => ({items:[], tree:null}))
+        ]);
         canvasAssetLibrary = data.library || canvasAssetLibrary;
+        localCanvasAssetLibrary = {items:Array.isArray(localData.items) ? localData.items : [], tree:localData.tree || null};
         const libs = canvasAssetLibraries();
         if(!activeCanvasAssetLibraryId) activeCanvasAssetLibraryId = canvasAssetLibrary.active_library_id || libs[0]?.id || '';
-        if(!libs.some(lib => lib.id === activeCanvasAssetLibraryId)) activeCanvasAssetLibraryId = libs[0]?.id || '';
+        if(activeCanvasAssetLibraryId !== LOCAL_CANVAS_ASSET_LIBRARY_ID && !libs.some(lib => lib.id === activeCanvasAssetLibraryId)) activeCanvasAssetLibraryId = libs[0]?.id || '';
         const cats = canvasAssetCategories();
         if(!cats.some(cat => cat.id === activeCanvasAssetCategoryId)) activeCanvasAssetCategoryId = cats[0]?.id || '';
         if(renderPanel) renderCanvasAssetLibrary();
@@ -5956,7 +5995,8 @@ async function loadCanvasAssetLibrary({renderPanel=true}={}){
 function renderCanvasAssetLibrary(){
     if(!canvasAssetPanel || !canvasAssetGrid) return;
     hideCanvasAssetHoverPreview();
-    const libs = canvasAssetLibraries();
+    const libs = canvasAssetSourceLibraries();
+    if(!activeCanvasAssetLibraryId || !libs.some(lib => lib.id === activeCanvasAssetLibraryId)) activeCanvasAssetLibraryId = canvasAssetLibrary.active_library_id || canvasAssetLibraries()[0]?.id || LOCAL_CANVAS_ASSET_LIBRARY_ID;
     if(canvasAssetLibrarySelect){
         canvasAssetLibrarySelect.innerHTML = libs.map(lib => `<option value="${escapeAttr(lib.id)}" ${lib.id === activeCanvasAssetLibraryId ? 'selected' : ''}>${escapeHtml(lib.name || '资产库')}</option>`).join('');
     }
@@ -5971,7 +6011,10 @@ function renderCanvasAssetLibrary(){
     }
     const cat = activeCanvasAssetCategory();
     const catType = String(cat?.type || 'image').toLowerCase();
+    const localMode = canvasAssetLibraryIsLocal();
+    if(canvasAssetAddCategoryBtn) canvasAssetAddCategoryBtn.disabled = localMode;
     if(canvasAssetDropZone) {
+        canvasAssetDropZone.style.display = localMode ? 'none' : 'flex';
         canvasAssetDropZone.textContent = catType === 'workflow' ? '工作流分组支持上传/导出工作流，双击卡片导入画布' : '拖入图片或输出保存到当前分组';
     }
     const items = cat?.items || [];
@@ -5980,11 +6023,13 @@ function renderCanvasAssetLibrary(){
             ${canvasAssetThumbHtml(item)}
             <div class="canvas-asset-meta">
                 <span class="canvas-asset-name" title="${escapeAttr(item.name || '')}">${escapeHtml(item.name || 'asset')}</span>
-                <button class="canvas-asset-action" type="button" data-canvas-asset-rename="${escapeAttr(item.id || '')}" title="重命名" aria-label="重命名"><i data-lucide="pencil" class="w-4 h-4"></i></button>
-                <button class="canvas-asset-action danger" type="button" data-canvas-asset-delete="${escapeAttr(item.id || '')}" title="删除" aria-label="删除"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                ${localMode
+                    ? `<span class="canvas-asset-local-tag">本地</span>`
+                    : `<button class="canvas-asset-action" type="button" data-canvas-asset-rename="${escapeAttr(item.id || '')}" title="重命名" aria-label="重命名"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                       <button class="canvas-asset-action danger" type="button" data-canvas-asset-delete="${escapeAttr(item.id || '')}" title="删除" aria-label="删除"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`}
             </div>
         </div>
-    `).join('') : `<div class="canvas-asset-empty">当前分组还没有资产</div>`;
+    `).join('') : `<div class="canvas-asset-empty">${escapeHtml(localMode ? '暂无本地素材，请在素材库管理中上传' : '当前分组还没有资产')}</div>`;
     canvasAssetGrid.querySelectorAll('.canvas-asset-item').forEach(card => {
         card.addEventListener('dragstart', event => {
             event.dataTransfer.effectAllowed = 'copy';
@@ -6026,6 +6071,7 @@ function toggleCanvasAssetLibrary(open=!canvasAssetLibraryOpen){
     if(canvasAssetLibraryOpen) loadCanvasAssetLibrary();
 }
 async function addUrlToCanvasAssetLibrary(url, name=''){
+    if(canvasAssetLibraryIsLocal()){ setStatus('本地素材请在素材库管理中上传'); return; }
     const cat = activeCanvasAssetCategory();
     if(!cat){ setStatus('请先创建资产分组'); return; }
     if(String(cat.type || 'image').toLowerCase() === 'workflow'){ setStatus('当前是工作流分组，请切换到图片分组保存媒体'); return; }
@@ -6162,7 +6208,6 @@ function renderWorkflowAssetManager(){
                     ${workflowAssetThumbHtml(item)}
                     <span class="asset-manager-card-name" title="${escapeAttr(item.name || '')}">${escapeHtml(item.name || 'workflow')}</span>
                     <div class="asset-manager-card-actions">
-                        <button type="button" data-manager-workflow-download="${escapeAttr(item.id)}"><i data-lucide="download" class="w-3.5 h-3.5"></i><span>导出</span></button>
                         <button type="button" data-manager-workflow-rename="${escapeAttr(item.id)}"><i data-lucide="pencil" class="w-3.5 h-3.5"></i><span>重命名</span></button>
                         <button type="button" class="danger" data-manager-workflow-remove="${escapeAttr(item.id)}"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i><span>删除</span></button>
                     </div>
@@ -8732,7 +8777,9 @@ async function rhBuildNodeInfoList(node, media){
         let value = rhFieldValue(node, field, media);
         if(['image','video','audio'].includes(kind)) value = await rhUploadValueIfNeeded(value, node);
         if(['number','slider'].includes(kind) && String(value ?? '').trim() !== '' && !Number.isNaN(Number(value))) value = Number(value);
-        if(typeof value === 'string' && /[\r\n]/.test(value)) value = value.split(/\r?\n/).map(s => s.trim()).filter(Boolean)[0] || '';
+        // 只对“单值”字段（下拉/选项等）去换行；prompt / text 这类自由文本必须保留换行，
+        // 否则多行提示词会被截成第一行（例如“一只红猫\n金色的眼睛”只剩“一只红猫”）。
+        if(typeof value === 'string' && !['prompt','text'].includes(rhFieldRole(field)) && /[\r\n]/.test(value)) value = value.split(/\r?\n/).map(s => s.trim()).filter(Boolean)[0] || '';
         result.push({nodeId:field.nodeId, fieldName:field.fieldName, fieldValue:value});
     }
     return result;
@@ -11547,6 +11594,7 @@ canvasAssetCategorySelect?.addEventListener('change', () => {
     renderCanvasAssetLibrary();
 });
 canvasAssetAddCategoryBtn?.addEventListener('click', async () => {
+    if(canvasAssetLibraryIsLocal()){ setStatus('本地素材请在素材库管理中管理文件夹'); return; }
     const name = window.prompt('新分组名称', '新分组');
     if(!String(name || '').trim()) return;
     const data = await fetch('/api/asset-library/categories', {
@@ -11668,12 +11716,6 @@ assetManagerModal?.addEventListener('click', async event => {
     if(workflowCat){ activeCanvasWorkflowCategoryId = workflowCat.dataset.managerWorkflowCat || ''; managerSelectedWorkflowIds.clear(); renderAssetManager(); return; }
     const promptLib = event.target.closest?.('[data-manager-prompt-lib]');
     if(promptLib){ activePromptLibraryId = promptLib.dataset.managerPromptLib || 'system'; managerSelectedPromptIds.clear(); renderAssetManager(); return; }
-    const workflowDownload = event.target.closest?.('[data-manager-workflow-download]');
-    if(workflowDownload){
-        const item = (activeCanvasWorkflowCategory()?.items || []).find(entry => entry.id === (workflowDownload.dataset.managerWorkflowDownload || ''));
-        if(item?.url) downloadUrl(item.url, `${item.name || 'workflow'}${String(item.url).toLowerCase().endsWith('.json') ? '.json' : '.zip'}`);
-        return;
-    }
     const workflowRename = event.target.closest?.('[data-manager-workflow-rename]');
     if(workflowRename){
         const itemId = workflowRename.dataset.managerWorkflowRename || '';
@@ -12229,25 +12271,44 @@ function copySelectedNodes(){
     if(el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT')) return;
     const toCopy = [...selected].map(id => nodes.find(n => n.id === id)).filter(Boolean);
     if(!toCopy.length) return;
-    clipboard = JSON.parse(JSON.stringify(serializableCanvasNodes(toCopy)));
+    const ids = new Set(toCopy.map(n => n.id));
+    const pickedConnections = (connections || []).filter(c => ids.has(c.from) && ids.has(c.to)).map(c => ({...c}));
+    clipboard = {
+        nodes:JSON.parse(JSON.stringify(serializableCanvasNodes(toCopy))),
+        connections:JSON.parse(JSON.stringify(pickedConnections))
+    };
+}
+function clipboardNodeCount(){
+    if(Array.isArray(clipboard)) return clipboard.length;
+    if(Array.isArray(clipboard?.nodes)) return clipboard.nodes.length;
+    return 0;
 }
 function pasteNodes(){
-    if(!canvas || !clipboard?.length) return;
+    if(!canvas || !clipboard) return;
+    const clipNodes = Array.isArray(clipboard) ? clipboard : (Array.isArray(clipboard.nodes) ? clipboard.nodes : []);
+    const clipConnections = Array.isArray(clipboard?.connections) ? clipboard.connections : [];
+    if(!clipNodes.length) return;
     pushUndo();
-    const xs = clipboard.map(n => n.x), ys = clipboard.map(n => n.y);
+    const xs = clipNodes.map(n => n.x), ys = clipNodes.map(n => n.y);
     const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
     const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
     const dx = lastMouseBoard.x - cx;
     const dy = lastMouseBoard.y - cy;
     const idMap = new Map();
-    const copies = clipboard.map(n => { const c = cloneNode(n, dx, dy); idMap.set(n.id, c.id); return c; });
+    const copies = clipNodes.map(n => { const c = cloneNode(n, dx, dy); idMap.set(n.id, c.id); return c; });
     copies.forEach(c => {
         if((c.type === 'group' || c.type === 'promptGroup') && c.items)
             c.items = c.items.map(id => idMap.get(id) || id);
     });
+    const newConnections = clipConnections
+        .map(c => ({...c, id:uid('c'), from:idMap.get(c.from), to:idMap.get(c.to)}))
+        .filter(c => c.from && c.to);
     nodes.push(...copies);
+    connections.push(...newConnections);
     selected.clear();
     copies.forEach(c => selected.add(c.id));
+    sanitizeConnections();
+    syncGeneratorInputs();
     render();
     scheduleSave();
 }
@@ -13229,7 +13290,7 @@ window.addEventListener('keydown', e => {
     if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
         const tag = document.activeElement?.tagName;
         if(tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
-        if(clipboard?.length) {
+        if(clipboardNodeCount()) {
             const pasteRequestedAt = Date.now();
             setTimeout(() => {
                 if(!canvas) return;

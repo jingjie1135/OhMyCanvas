@@ -23,11 +23,11 @@
             } catch(e) {}
         })();
     </script>
-    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.06.1780414767"></script>
-    <script src="/static/js/theme.js?v=2026.06.06.1780781381"></script>
-    <script src="/static/js/i18n.js?v=2026.06.06.1780781381"></script>
+    <script src="/static/vendor/js/tailwindcss-cdn.js?v=2026.06.08.1779672342"></script>
+    <script src="/static/js/theme.js?v=2026.06.08.1780456238"></script>
+    <script src="/static/js/i18n.js?v=2026.06.08.1780902932"></script>
     <style>
-        @import url('/static/vendor/css/fonts.css?v=2026.06.06.1780414767');
+        @import url('/static/vendor/css/fonts.css?v=2026.06.08.1779672342');
 
         /* 本地 Tailwind 工具类兜底：CDN 慢/未就绪时也能立刻给图标尺寸，避免首屏左侧栏空白 */
         .w-1\.5 { width: 0.375rem; }
@@ -147,6 +147,8 @@
         .sidebar {
             width: 80px;
             min-width: 80px;
+            height: 100vh;
+            max-height: 100vh;
             background: var(--sidebar-bg);
             display: flex;
             flex-direction: column;
@@ -184,7 +186,7 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            flex-shrink: 0;
+            flex: 0 0 auto;
             /* 仅保留 hover 真正会用到的属性过渡，避免 transition: all 因首屏属性补齐被意外触发 */
             transition: transform 0.6s var(--fluid-ease) 0.5s, border-radius 0.6s var(--fluid-ease) 0.5s, border-color 0.3s, background-color .18s, box-shadow .2s;
         }
@@ -226,6 +228,7 @@
             position: relative;
             width: 48px;
             height: 48px;
+            flex: 0 0 48px;
             margin: 10px 0;
             display: flex;
             align-items: center;
@@ -278,6 +281,7 @@
             position: relative;
             width: 48px;
             height: 36px;
+            flex: 0 0 36px;
             margin: 0 0 6px;
             padding-left: 14px;
             border: 1px solid var(--border);
@@ -316,7 +320,8 @@
 
         .nav-fold-group {
             width: 100%;
-            max-height: 282px;
+            flex: 0 0 auto;
+            max-height: 720px;
             opacity: 1;
             overflow: hidden;
             display: flex;
@@ -341,15 +346,31 @@
             flex-direction: column;
             align-items: center;
             padding: 0 0 6px;
+            overscroll-behavior: contain;
+            scrollbar-gutter: stable;
+            -webkit-overflow-scrolling: touch;
             scrollbar-width: thin;
             scrollbar-color: rgba(148, 163, 184, .34) transparent;
         }
 
-        .sidebar nav::-webkit-scrollbar { width: 4px; }
-        .sidebar nav::-webkit-scrollbar-track { background: transparent; }
+        .sidebar::-webkit-scrollbar { width: 4px !important; }
+        .sidebar::-webkit-scrollbar-track { background: transparent !important; }
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, .34) !important;
+            border: 0 !important;
+            border-radius: 999px !important;
+        }
+
+        .sidebar nav::-webkit-scrollbar { width: 4px !important; }
+        .sidebar nav::-webkit-scrollbar-track { background: transparent !important; }
         .sidebar nav::-webkit-scrollbar-thumb {
-            background: rgba(148, 163, 184, .34);
-            border-radius: 999px;
+            background: rgba(148, 163, 184, .34) !important;
+            border: 0 !important;
+            border-radius: 999px !important;
+        }
+
+        .sidebar nav > * {
+            flex-shrink: 0;
         }
 
         /* 主舞台区 */
@@ -468,6 +489,7 @@
         .author-box {
             width: 100%;
             height: 60px;
+            flex: 0 0 60px;
             position: relative;
             display: flex;
             align-items: center;
@@ -624,6 +646,41 @@
         }
 
         .side-pill svg { width: 16px; height: 16px; flex:0 0 auto; }
+        .settings-fold-chevron {
+            width: 13px !important;
+            height: 13px !important;
+            margin-left: -2px;
+            opacity: 0;
+            max-width: 0;
+            overflow: hidden;
+            transition: opacity 0.3s 0.5s, max-width 0.3s var(--fluid-ease) 0.5s, transform .22s var(--fluid-ease);
+        }
+        .sidebar:hover .settings-fold-chevron,
+        .sidebar.is-pinned .settings-fold-chevron {
+            opacity: .72;
+            max-width: 16px;
+            transition-delay: .15s, .15s, 0s;
+        }
+        .settings-fold-toggle[aria-expanded="true"] .settings-fold-chevron {
+            transform: rotate(180deg);
+        }
+        .settings-fold-group {
+            width: 100%;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+            transition: max-height .28s var(--fluid-ease), opacity .18s ease;
+        }
+        .settings-fold-group:not(.is-collapsed) {
+            max-height: 132px;
+            opacity: 1;
+            pointer-events: auto;
+        }
         .side-pill-text {
             opacity:0;
             max-width:0;
@@ -698,6 +755,19 @@
         .update-now-btn[disabled] { opacity:.7; cursor:wait; }
         .update-now-btn svg { display:none; width:14px; height:14px; flex:0 0 auto; }
         .sidebar:hover .update-now-btn svg { display:block; }
+
+        #project-update-confirm-btn[disabled] {
+            background:#94a3b8;
+            border-color:#94a3b8;
+            color:#fff;
+            cursor:not-allowed;
+        }
+
+        #project-update-confirm-btn[disabled]:hover {
+            background:#94a3b8;
+            border-color:#94a3b8;
+            box-shadow:none;
+        }
         .update-now-text {
             opacity:1;
             max-width:42px;
@@ -726,19 +796,35 @@
         }
 
         @media (max-height: 760px) {
-            .sidebar { padding: 18px 0 14px; }
+            .sidebar {
+                padding: 18px 0 14px;
+                overflow-y:auto;
+                overflow-x:hidden;
+                overscroll-behavior:contain;
+                -webkit-overflow-scrolling:touch;
+                scrollbar-width:thin;
+                scrollbar-color:rgba(148,163,184,.34) transparent;
+            }
+            .sidebar nav {
+                flex:0 0 auto;
+                min-height:auto;
+                overflow:visible;
+                padding-bottom:0;
+            }
             .logo-ring { margin-bottom: 16px !important; }
             .nav-item {
                 height: 42px;
+                flex-basis: 42px;
                 margin: 5px 0;
                 border-radius: 15px;
             }
             .nav-fold-toggle {
                 height: 32px;
+                flex-basis: 32px;
                 margin-bottom: 4px;
                 border-radius: 14px;
             }
-            .nav-fold-group { max-height: 282px; }
+            .nav-fold-group { max-height: 720px; }
             .side-actions {
                 margin-top:8px;
                 margin-bottom:0;
@@ -746,8 +832,15 @@
                 padding-top:8px;
                 border-top:1px solid var(--border);
             }
+            .settings-fold-group {
+                gap: 5px;
+            }
+            .settings-fold-group:not(.is-collapsed) {
+                max-height: 105px;
+            }
             .side-pill {
                 height:30px;
+                flex-basis:30px;
                 width:40px;
             }
             .project-version-badge { width:40px; min-height:16px; font-size:8px; }
@@ -757,6 +850,12 @@
 
         @media (max-height: 660px) {
             .sidebar { padding: 12px 0; }
+            .sidebar nav {
+                flex:0 0 auto;
+                min-height:auto;
+                overflow:visible;
+                padding-bottom:0;
+            }
             .logo-ring {
                 width:32px;
                 height:32px;
@@ -765,22 +864,30 @@
             }
             .nav-item {
                 height:38px;
+                flex-basis:38px;
                 margin:3px 0;
                 border-radius:14px;
             }
-            .nav-fold-toggle { height:30px; }
-            .nav-fold-group { max-height: 252px; }
+            .nav-fold-toggle { height:30px; flex-basis:30px; }
+            .nav-fold-group { max-height: 720px; }
             .side-actions {
                 gap:4px;
                 padding-top:6px;
             }
+            .settings-fold-group {
+                gap: 4px;
+            }
+            .settings-fold-group:not(.is-collapsed) {
+                max-height: 102px;
+            }
             .side-pill {
                 height:30px;
+                flex-basis:30px;
                 width:38px;
             }
             .side-pill svg { width:15px; height:15px; }
-            .project-version-badge,
-            .update-now-btn.show { display:none; }
+            .project-version-badge { width:38px; min-height:16px; font-size:8px; }
+            .update-now-btn.show { width:46px; min-height:22px; font-size:8px; }
         }
 
         .studio-modal[hidden] {
@@ -906,6 +1013,12 @@
 
         /* 更新弹窗：双卡片需要更宽的面板，避免左右布局被裁剪 */
         #project-update-modal .studio-modal-panel { width:min(880px, 100%); max-height:min(840px, calc(100vh - 48px)); }
+        .update-notes-box { margin:2px 0 14px; padding:12px; border:1px solid #e5e7eb; border-radius:8px; background:#fbfdff; }
+        .update-notes-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+        .update-notes-head strong { font-size:12px; color:#111827; font-weight:950; }
+        .update-notes-version { color:#64748b; font-size:11px; font-weight:800; white-space:nowrap; }
+        .update-notes-list { margin:0; padding:0 0 0 16px; display:grid; gap:6px; color:#334155; font-size:12px; line-height:1.55; }
+        .update-notes-empty { margin:0; color:#94a3b8; font-size:12px; line-height:1.55; }
         .update-source-list { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; align-items:stretch; }
         @media (max-width: 720px) { .update-source-list { grid-template-columns:1fr; } }
         .update-source-card { width:100%; min-width:0; border:1px solid #e5e7eb; border-radius:10px; background:#fff; color:#111827; text-align:left; padding:12px; display:flex; flex-direction:column; gap:10px; cursor:pointer; transition:border-color .16s ease, box-shadow .16s ease, transform .16s ease, background .16s ease; }
@@ -1067,19 +1180,6 @@
             cursor:wait;
         }
 
-        #project-update-confirm-btn[disabled] {
-            background:#94a3b8;
-            border-color:#94a3b8;
-            color:#fff;
-            cursor:not-allowed;
-        }
-
-        #project-update-confirm-btn[disabled]:hover {
-            background:#94a3b8;
-            border-color:#94a3b8;
-            box-shadow:none;
-        }
-
         html.theme-dark .studio-modal,
         body.theme-dark .studio-modal {
             background:rgba(2,6,23,.56);
@@ -1135,8 +1235,16 @@
             color:#9aa6b8;
         }
 
+        html.theme-dark .update-notes-box,
+        body.theme-dark .update-notes-box {
+            background:#0c0d10;
+            border-color:#25262b;
+        }
+
         html.theme-dark .update-modal-summary strong,
         body.theme-dark .update-modal-summary strong,
+        html.theme-dark .update-notes-head strong,
+        body.theme-dark .update-notes-head strong,
         html.theme-dark .update-source-title strong,
         body.theme-dark .update-source-title strong,
         html.theme-dark .connectivity-name,
@@ -1144,6 +1252,15 @@
             color:#e8e8ea;
         }
 
+        html.theme-dark .update-notes-list,
+        body.theme-dark .update-notes-list {
+            color:#cbd5e1;
+        }
+
+        html.theme-dark .update-notes-version,
+        body.theme-dark .update-notes-version,
+        html.theme-dark .update-notes-empty,
+        body.theme-dark .update-notes-empty,
         html.theme-dark .update-source-title span,
         body.theme-dark .update-source-title span {
             color:#8f9aab;
@@ -1414,31 +1531,6 @@
             </nav>
 
             <div class="side-actions">
-                <button class="side-pill" onclick="toggleTheme()" id="theme-toggle-btn" type="button" title="切换夜间模式">
-                    <svg id="icon-moon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                    </svg>
-                    <svg id="icon-sun" style="display:none" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="5"></circle>
-                        <line x1="12" y1="1" x2="12" y2="3"></line>
-                        <line x1="12" y1="21" x2="12" y2="23"></line>
-                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                        <line x1="1" y1="12" x2="3" y2="12"></line>
-                        <line x1="21" y1="12" x2="23" y2="12"></line>
-                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-                    </svg>
-                    <span class="side-pill-text" data-i18n="common.darkMode">黑夜模式</span>
-                </button>
-                <button class="side-pill" onclick="toggleLanguage()" id="lang-toggle-btn" type="button" title="Language">
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <path d="M2 12h20"></path>
-                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                    </svg>
-                    <span class="side-pill-text" data-i18n="common.language">中文</span>
-                </button>
                 <button class="side-pill" onclick="switchUI(this, 'api-settings')" type="button" title="API 设置">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M15 7h3a5 5 0 0 1 0 10h-3"></path>
@@ -1447,17 +1539,54 @@
                     </svg>
                     <span class="side-pill-text" data-i18n="common.apiSettings">API 设置</span>
                 </button>
-                <button class="side-pill" onclick="switchUI(this, 'comfyui-settings')" type="button" title="工作流设置">
+                <button class="side-pill settings-fold-toggle" id="settings-fold-toggle" onclick="toggleSidebarSettings()" type="button" title="更多设置" aria-expanded="false">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="3" y="3" width="7" height="7" rx="1"></rect>
-                        <rect x="14" y="3" width="7" height="7" rx="1"></rect>
-                        <rect x="3" y="14" width="7" height="7" rx="1"></rect>
-                        <path d="M14 14h7v7h-7z"></path>
-                        <line x1="10" y1="6.5" x2="14" y2="6.5"></line>
-                        <line x1="6.5" y1="10" x2="6.5" y2="14"></line>
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.36 1.08V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1.08-.36H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .36-1.08V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.22.38.58.69 1 .86.2.08.42.13.65.14H21a2 2 0 1 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"></path>
                     </svg>
-                    <span class="side-pill-text" data-i18n="common.comfyuiSettings">工作流设置</span>
+                    <span class="side-pill-text" data-i18n="common.moreSettings">更多设置</span>
+                    <svg class="settings-fold-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
                 </button>
+                <div class="settings-fold-group is-collapsed" id="settings-fold-group">
+                    <button class="side-pill" onclick="toggleTheme()" id="theme-toggle-btn" type="button" title="切换夜间模式">
+                        <svg id="icon-moon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                        </svg>
+                        <svg id="icon-sun" style="display:none" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"></circle>
+                            <line x1="12" y1="1" x2="12" y2="3"></line>
+                            <line x1="12" y1="21" x2="12" y2="23"></line>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                            <line x1="1" y1="12" x2="3" y2="12"></line>
+                            <line x1="21" y1="12" x2="23" y2="12"></line>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                        </svg>
+                        <span class="side-pill-text" data-i18n="common.darkMode">黑夜模式</span>
+                    </button>
+                    <button class="side-pill" onclick="toggleLanguage()" id="lang-toggle-btn" type="button" title="Language">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M2 12h20"></path>
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                        </svg>
+                        <span class="side-pill-text" data-i18n="common.language">中文</span>
+                    </button>
+                    <button class="side-pill" onclick="switchUI(this, 'comfyui-settings')" type="button" title="工作流设置">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+                            <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+                            <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+                            <path d="M14 14h7v7h-7z"></path>
+                            <line x1="10" y1="6.5" x2="14" y2="6.5"></line>
+                            <line x1="6.5" y1="10" x2="6.5" y2="14"></line>
+                        </svg>
+                        <span class="side-pill-text" data-i18n="common.comfyuiSettings">工作流设置</span>
+                    </button>
+                </div>
                 <button id="github-entry-btn" class="side-pill" onclick="openProjectPage()" type="button" title="GitHub">
                     <svg fill="currentColor" stroke="none" viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.74.08-.74 1.21.09 1.85 1.25 1.85 1.25 1.07 1.83 2.81 1.3 3.5.99.11-.78.42-1.3.76-1.6-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.53.12-3.18 0 0 1.01-.32 3.3 1.23a11.45 11.45 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.93.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z"></path>
@@ -1527,16 +1656,16 @@
         </script>
 
         <main class="stage">
-            <iframe id="frame-zimage" data-src="/static/zimage.html?v=2026.06.06.1780782699" class="active" scrolling="yes"></iframe>
-            <iframe id="frame-enhance" data-src="/static/enhance.html?v=2026.06.06.1780782699" scrolling="yes"></iframe>
-            <iframe id="frame-klein" data-src="/static/klein.html?v=2026.06.06.1780782699" scrolling="yes"></iframe>
-            <iframe id="frame-angle" data-src="/static/angle.html?v=2026.06.06.1780782699" scrolling="yes"></iframe>
-            <iframe id="frame-online" data-src="/static/online.html?v=2026.06.06.1780782699" scrolling="yes"></iframe>
-            <iframe id="frame-gpt-chat" data-src="/static/gpt-chat.html?v=2026.06.06.1780782699" scrolling="yes"></iframe>
-            <iframe id="frame-canvas" data-src="/static/canvas.html?v=2026.06.06.1780782699" scrolling="yes"></iframe>
-            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.06.06.1780782699" scrolling="yes"></iframe>
-            <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.06.06.1781078104" scrolling="yes"></iframe>
-            <iframe id="frame-comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.06.06.1780782699" scrolling="yes"></iframe>
+            <iframe id="frame-zimage" data-src="/static/zimage.html?v=2026.06.08.1780976619" class="active" scrolling="yes"></iframe>
+            <iframe id="frame-enhance" data-src="/static/enhance.html?v=2026.06.08.1780976619" scrolling="yes"></iframe>
+            <iframe id="frame-klein" data-src="/static/klein.html?v=2026.06.08.1780976619" scrolling="yes"></iframe>
+            <iframe id="frame-angle" data-src="/static/angle.html?v=2026.06.08.1780976619" scrolling="yes"></iframe>
+            <iframe id="frame-online" data-src="/static/online.html?v=2026.06.08.1780976619" scrolling="yes"></iframe>
+            <iframe id="frame-gpt-chat" data-src="/static/gpt-chat.html?v=2026.06.08.1780977621" scrolling="yes"></iframe>
+            <iframe id="frame-canvas" data-src="/static/canvas.html?v=2026.06.08.1781071482" scrolling="yes"></iframe>
+            <iframe id="frame-asset-manager" data-src="/static/asset-manager.html?v=2026.06.08.1780976619" scrolling="yes"></iframe>
+            <iframe id="frame-api-settings" data-src="/static/api-settings.html?v=2026.06.08.1781069974" scrolling="yes"></iframe>
+            <iframe id="frame-comfyui-settings" data-src="/static/comfyui-settings.html?v=2026.06.08.1780976619" scrolling="yes"></iframe>
 
             <div class="nano-monitor" id="nano-monitor">
                 <div class="stat-group">
@@ -1570,6 +1699,14 @@
             </div>
             <div class="studio-modal-body">
                 <p id="project-update-copy" class="studio-modal-copy"></p>
+                <div id="project-update-notes" class="update-notes-box" hidden>
+                    <div class="update-notes-head">
+                        <strong id="project-update-notes-title">本次更新内容</strong>
+                        <span id="project-update-notes-version" class="update-notes-version"></span>
+                    </div>
+                    <ol id="project-update-notes-list" class="update-notes-list"></ol>
+                    <p id="project-update-notes-empty" class="update-notes-empty" hidden>暂未获取到更新说明。</p>
+                </div>
                 <div id="update-source-list" class="update-source-list">
                     <button id="update-source-github" class="update-source-card" type="button" data-update-source="github" onclick="setUpdateSource('github')">
                         <div class="update-source-head">
@@ -1646,6 +1783,7 @@
         localStorage.setItem("client_id", CID);
         const ACTIVE_PAGE_KEY = 'studio_active_page';
         const LOCAL_NAV_COLLAPSED_KEY = 'studio_local_nav_collapsed';
+        const SIDEBAR_SETTINGS_COLLAPSED_KEY = 'studio_sidebar_settings_collapsed';
         const SIDEBAR_PINNED_KEY = 'studio_sidebar_pinned';
         const DEFAULT_PAGE_ID = 'zimage';
         const PAGE_IDS = ['zimage','enhance','klein','angle','online','gpt-chat','canvas','asset-manager','api-settings','comfyui-settings'];
@@ -1656,6 +1794,7 @@
         let projectUpdateRunning = false;
         let projectUpdateAbort = null;  // 当前更新请求的 AbortController，便于用户中途取消
         let updateSource = localStorage.getItem('studio_update_source') || 'github';
+        let projectUpdateNotes = null;
         const PROJECT_UPDATE_DISABLED = true;
         const PROJECT_UPDATE_DISABLED_ZH = 'OhMyCanvas 已禁用内置一键更新，请通过 Git 手动同步更新，避免覆盖本地二开改动。';
         const PROJECT_UPDATE_DISABLED_EN = 'Built-in one-click update is disabled for OhMyCanvas. Sync updates manually with Git to avoid overwriting local fork customizations.';
@@ -1710,6 +1849,27 @@
             setLocalNavCollapsed(savedCollapsed && !LOCAL_PAGE_IDS.includes(id), { skipRemember:true });
         }
 
+        function setSidebarSettingsCollapsed(collapsed, options = {}) {
+            const group = document.getElementById('settings-fold-group');
+            const toggle = document.getElementById('settings-fold-toggle');
+            if(group) group.classList.toggle('is-collapsed', collapsed);
+            if(toggle) {
+                toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                toggle.title = collapsed ? '展开更多设置' : '收起更多设置';
+            }
+            if(!options.skipRemember) localStorage.setItem(SIDEBAR_SETTINGS_COLLAPSED_KEY, collapsed ? '1' : '0');
+        }
+
+        function toggleSidebarSettings() {
+            const group = document.getElementById('settings-fold-group');
+            setSidebarSettingsCollapsed(!group?.classList.contains('is-collapsed'));
+        }
+
+        function restoreSidebarSettings(id) {
+            const savedCollapsed = localStorage.getItem(SIDEBAR_SETTINGS_COLLAPSED_KEY) !== '0';
+            setSidebarSettingsCollapsed(savedCollapsed && id !== 'comfyui-settings', { skipRemember:true });
+        }
+
         function resetStudioRootScroll() {
             try {
                 window.scrollTo(0, 0);
@@ -1735,6 +1895,9 @@
                 setLocalNavCollapsed(false, { skipRemember:true });
             } else {
                 setLocalNavCollapsed(localStorage.getItem(LOCAL_NAV_COLLAPSED_KEY) === '1', { skipRemember:true });
+            }
+            if(id === 'comfyui-settings') {
+                setSidebarSettingsCollapsed(false, { skipRemember:true });
             }
             // 切换到画布时通知刷新工作流列表（防止在 comfyui-settings 修改后画布未及时更新）
             if (id === 'canvas' && target.src) {
@@ -1766,6 +1929,7 @@
             restoreSidebarPinned();
             const id = PAGE_IDS.includes(localStorage.getItem(ACTIVE_PAGE_KEY)) ? localStorage.getItem(ACTIVE_PAGE_KEY) : DEFAULT_PAGE_ID;
             restoreLocalNav(id);
+            restoreSidebarSettings(id);
             const trigger = document.querySelector(`[onclick*="'${id}'"],[onclick*='"${id}"']`);
             switchUI(trigger, id, { skipRemember:true });
             document.documentElement.classList.remove('studio-route-booting');
@@ -2017,6 +2181,41 @@
             updateProjectUpdateTitle();
         }
 
+        function setProjectUpdateNotes(notes) {
+            projectUpdateNotes = notes && typeof notes === 'object' ? notes : null;
+            renderProjectUpdateNotes();
+        }
+
+        function renderProjectUpdateNotes() {
+            const box = document.getElementById('project-update-notes');
+            if(!box) return;
+            const titleEl = document.getElementById('project-update-notes-title');
+            const versionEl = document.getElementById('project-update-notes-version');
+            const list = document.getElementById('project-update-notes-list');
+            const empty = document.getElementById('project-update-notes-empty');
+            const isEn = window.StudioI18n?.lang?.() === 'en';
+            const notes = projectUpdateNotes || {};
+            const items = Array.isArray(notes.items) ? notes.items.filter(Boolean) : [];
+            if(titleEl) titleEl.textContent = isEn ? 'What changed' : '本次更新内容';
+            if(versionEl) versionEl.textContent = notes.version ? versionLabel(notes.version) : '';
+            if(list) {
+                list.replaceChildren();
+                items.slice(0, 8).forEach(item => {
+                    const text = typeof item === 'string' ? item : item.text;
+                    if(!text) return;
+                    const li = document.createElement('li');
+                    li.textContent = String(text);
+                    list.append(li);
+                });
+            }
+            const hasItems = !!(list && list.children.length);
+            if(empty) {
+                empty.hidden = hasItems;
+                empty.textContent = isEn ? 'No update notes were found for this version.' : '暂未获取到这个版本的更新说明。';
+            }
+            box.hidden = !(notes.version || hasItems);
+        }
+
         function describeNetworkError(err, isEn){
             const msg = String(err?.message || err || '');
             const isNetwork = (err instanceof TypeError) || /Failed to fetch|NetworkError|ERR_|timed? ?out|超时|无法连接|GitHub|HTTP 4|HTTP 5/i.test(msg);
@@ -2169,6 +2368,7 @@
             const confirmText = document.getElementById('project-update-confirm-text');
             const closeBtn = document.querySelector('#project-update-modal .studio-modal-close');
             if(titleEl) titleEl.textContent = title;
+            renderProjectUpdateNotes();
             document.querySelectorAll('[data-update-source]').forEach(card => {
                 const source = card.dataset.updateSource || 'github';
                 const active = source === updateSource;
@@ -2445,6 +2645,7 @@
                 });
                 const data = await res.json().catch(() => ({}));
                 if(!res.ok) throw new Error(data.detail || (isEn ? 'Update failed' : '更新失败'));
+                if(data.update_notes) setProjectUpdateNotes(data.update_notes);
                 const restarting = data.restart_scheduled;
                 const usedLabel = data.source_label || (data.source === 'modelscope' ? 'ModelScope' : 'GitHub');
                 const fallbackNote = data.fallback_used
@@ -2550,7 +2751,7 @@
                         serverChecked = true;
                         reachable = !!d.reachable;
                         if(d.current) { current = String(d.current).trim(); setProjectVersionBadge(current); }
-                        if(d.latest?.version) best = {source:d.latest.source, version:d.latest.version};
+                        if(d.latest?.version) best = {source:d.latest.source, version:d.latest.version, update_notes:d.latest.update_notes || d.update_notes || null};
                     }
                 } catch(e) {}
                 // 兜底：旧后端无 /api/check-update 时，浏览器直接拉取双源 VERSION
@@ -2571,6 +2772,7 @@
                 const hasUpdate = !!(current && best?.version && compareVersions(best.version, current) > 0);
                 if(hasUpdate) {
                     if(best.source === 'modelscope') setUpdateSource('modelscope');
+                    setProjectUpdateNotes(best.update_notes || null);
                     showUpdateNotice(current, best.version);
                 }
                 if(manual) {
