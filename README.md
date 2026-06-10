@@ -2,28 +2,26 @@
 
 镜界-无限画布是基于 Infinite Canvas 二次维护的本地 AI 创作画布，支持 ComfyUI、OpenAI 兼容 API、Gemini 协议、即梦、ModelScope、RunningHub 等多种接入方式。
 
-详细教程：[https://youtu.be/1y9ShTvgC_w](https://youtu.be/r_y_9ALr7fg)
+详细教程：
 
 ## 推荐 API
 
-- 镜界AI：`https://mirror.zeabur.app`
+- 镜界AI：<https://mirror.zeabur.app>
   - 支持协议：OpenAI / Gemini / 即梦
   - 简介：模型种类齐全，图像、视频、LLM 一站覆盖，支持每日签到送积分，适合想低成本尝鲜各类模型的用户。
-- 占位（广告位招租）
-- 占位（广告位招租）
 
-账号订阅方案：<https://bewild.ai?code=LSAOCVPC>
+ChatGPT、Claude、Gemini、Grok，各大AI账号订阅：<https://bewild.ai?code=LSAOCVPC>
 
 ## 关于本项目
 
-- 当前维护仓库：<https://github.com/jingjie1135/OhMyCanvas>
-- 项目显示名：镜界-无限画布
+- 当前仓库地址：<https://github.com/jingjie1135/OhMyCanvas>
+- 项目名：镜界-无限画布
 - 维护标识：OhMyCanvas
 - 作者/维护者：小雨小面@wuli大雄
 - B站主页：<https://space.bilibili.com/1499434734>
 - 抖音主页：<https://v.douyin.com/p4UBiAsIVdI>
-- 小红书 / YouTube / X：占位
-- 功能请求、功能更新、视频教程、联系反馈：占位
+- 小红书 / YouTube / X：
+- 功能请求、功能更新、视频教程、联系反馈：QQ 2283348039
 
 本仓库保留原项目的核心能力，并围绕本地部署、API 接入、RunningHub、ModelScope、智能画布等场景继续维护。内置一键更新保持禁用，避免远程更新覆盖本仓库的二开改动；如需同步更新，请使用 Git 手动合并。
 

@@ -27,7 +27,7 @@ API 使用教程：占位
 
 https://openai.com/zh-Hans-CN/codex/
 GPT账号免费和plus都有额度可以用。如果要开发大型应用，可以先使用推荐 API：镜界AI（https://mirror.zeabur.app）。
-API 使用教程：占位
+API 使用教程：
 
 
 ===非网盘会员====
