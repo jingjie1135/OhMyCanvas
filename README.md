@@ -1,32 +1,41 @@
-# Infinite-Canvas
-Supports comfyui/API calls/modelscope calls
+# OhMyCanvas
+
+镜界-无限画布是基于 Infinite Canvas 二次维护的本地 AI 创作画布，支持 ComfyUI、OpenAI 兼容 API、Gemini 协议、即梦、ModelScope、RunningHub 等多种接入方式。
 
 详细教程：[https://youtu.be/1y9ShTvgC_w](https://youtu.be/r_y_9ALr7fg)
 
-由于最近很多API网址关停，我找到一个稳定的网址：
+## 推荐 API
 
-https://apimart.ai/register?aff=1uyAbb  （包含所有生图模型/视频模型/LLM模型）
+- 镜界AI：`https://mirror.zeabur.app`
+  - 支持协议：OpenAI / Gemini / 即梦
+  - 简介：模型种类齐全，图像、视频、LLM 一站覆盖，支持每日签到送积分，适合想低成本尝鲜各类模型的用户。
+- 占位（广告位招租）
+- 占位（广告位招租）
 
-https://www.fhl.mom/register?aff=86L574B4T2N9  （包含codex和GPT image 2模型）
+账号订阅方案：<https://bewild.ai?code=LSAOCVPC>
 
-功能请求/功能更新/视频教程/联系我，都可以在B站评论或私信：https://space.bilibili.com/78652351
+## 关于本项目
 
-----
+- 当前维护仓库：<https://github.com/jingjie1135/OhMyCanvas>
+- 项目显示名：镜界-无限画布
+- 维护标识：OhMyCanvas
+- 作者/维护者：小雨小面@wuli大雄
+- B站主页：<https://space.bilibili.com/1499434734>
+- 抖音主页：<https://v.douyin.com/p4UBiAsIVdI>
+- 小红书 / YouTube / X：占位
+- 功能请求、功能更新、视频教程、联系反馈：占位
 
-【新增了version文件，我每次更新都会更新version的版本号，如果你下载version文件，打开项目后，导航栏的GitHub按键就会提示新版本，如果不想查看更新提示，就删除version文件】
+本仓库保留原项目的核心能力，并围绕本地部署、API 接入、RunningHub、ModelScope、智能画布等场景继续维护。内置一键更新保持禁用，避免远程更新覆盖本仓库的二开改动；如需同步更新，请使用 Git 手动合并。
 
-【A version file has been added. I update the version number with each update. If you download the version file, the GitHub button in the navigation bar will indicate the new version after opening the project. If you don't want to see update notifications, delete the version file.】
+## 支持的功能
 
-----
-
-支持的功能：
-1. 支持几乎所有OpenAI协议的API/异步协议/Gemini协议/方舟协议
-2. RunningHub的工作流/AI应用/收费模型调用
-3. 火山引擎调用（人脸认证还在修复bug）
-4. Modelscope免费LLM模型和图像模型调用
-5. 即梦CLI调用，可直接调用即梦高级会员的积分，支持文生图/图生图/文生视频/图生视频
-6. 支持调用本地局域网的ComfyUI
-7. 扩展图片/360全景图预览截图/视频帧抽取/循环节点等诸多功能
+1. 支持 OpenAI 兼容协议、异步协议、Gemini 协议、方舟协议等多种 API 接入。
+2. 支持 RunningHub 工作流、AI 应用和收费模型调用。
+3. 支持火山引擎调用。
+4. 支持 ModelScope 免费 LLM 模型和图像模型调用。
+5. 支持即梦 CLI，覆盖文生图、图生图、文生视频、图生视频等能力。
+6. 支持调用本地局域网 ComfyUI。
+7. 支持扩展图片、360 全景图预览截图、视频帧抽取、循环节点等功能。
 
 --------
 
@@ -66,3 +75,7 @@ Commercial use is prohibited.
 
 <img width="2196" height="1040" alt="image" src="https://github.com/user-attachments/assets/6d823668-cde2-4836-8332-1858efe5f520" />
 <img width="2214" height="771" alt="image" src="https://github.com/user-attachments/assets/52e10958-753f-45ba-a50e-3bbec27be436" />
+
+## 本项目基于以下仓库：
+
+- <https://github.com/hero8152/Infinite-Canvas>

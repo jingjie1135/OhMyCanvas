@@ -2,14 +2,15 @@
 智能画布教程：https://www.bilibili.com/video/BV1xAVT6hEBk
 
 
-1. API网站注册：
-https://apimart.ai/register?aff=1uyAbb
+1. 推荐 API：镜界AI
+Base URL：https://mirror.zeabur.app
+支持协议：OpenAI / Gemini / 即梦
+简介：模型种类齐全，图像、视频、LLM 一站覆盖，支持每日签到送积分，适合想低成本尝鲜各类模型的用户。
+API 使用教程：占位
 
 2.我上传了python环境（如果没有会有，就下载python.zip，解压到目录就可以了），现在直接点击运行bat就可以启动了，不需要做更多的设置了
 
-3. 运行成功，网页左下角设置API，请求地址：
-https://api.apimart.ai
-协议选择APIMart异步（不同网站协议不同，其他网站可以使用OpenAI协议），填写api key就可以拉取和选择想要的模型。
+3. 运行成功后，在网页左下角打开 API 设置。使用镜界AI时，请求地址填写 https://mirror.zeabur.app；协议按模型类型选择 OpenAI、Gemini 或即梦，填写 API Key 后即可拉取和选择想要的模型。
 
 4. 想要免费生成就设置modelscope的key，还可以调用lora
 
@@ -25,8 +26,8 @@ https://api.apimart.ai
 ===建议所有人安装codex=====
 
 https://openai.com/zh-Hans-CN/codex/
-GPT账号免费和plus都有额度可以用，如果要开发大型应用，可以使用性价比的中转站：https://www.fhl.mom/register?aff=86L574B4T2N9
-API使用教程：https://xcnk45dd0a92.feishu.cn/wiki/DRuEwOd8mi9d0sknkxPcCzTjn1b
+GPT账号免费和plus都有额度可以用。如果要开发大型应用，可以先使用推荐 API：镜界AI（https://mirror.zeabur.app）。
+API 使用教程：占位
 
 
 ===非网盘会员====
