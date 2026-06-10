@@ -29,7 +29,10 @@
   - Base URL：`https://mirror.zeabur.app`
   - 默认保存协议：`openai`
   - `model_protocols` 中保留 Gemini / 即梦逐模型协议覆盖。
-- 推荐 API 2/3：`占位（广告位招租）`
+- 推荐 API 2：`Agnes AI`
+  - Base URL：`https://apihub.agnes-ai.com`
+  - 默认保存协议：`openai`；图片请求模式：`openai-json`。
+- 推荐 API 3/4：`占位（广告位招租）`
 - RunningHub RH 币国内链接：`https://www.runninghub.cn/?inviteCode=55fa0e9e`
 - RunningHub RH 币国外链接：`https://www.runninghub.ai/?inviteCode=q0ozo24o`
 - RunningHub 账户余额国内/国外链接目前是字面占位：`占位`
@@ -89,6 +92,15 @@
 - 嵌入式 Python 运行目录：`python/Lib/`、`python/Scripts/`
 
 合并上游时不要把这些本地状态文件重新纳入版本控制。
+
+
+### 7. Agent 验证优先级与本地服务命令规则
+
+- 普通命令等 exit code；`python\python.exe main.py`、`run.bat`、`uvicorn` 这类服务命令等 readiness。
+- 不要把服务命令以前台普通命令运行后等待退出；成功启动后它会持续监听端口，不会主动结束。
+- QA 需要启动服务时，用 `Start-Process` 后台启动并记录 PID，轮询 `http://127.0.0.1:3000/api/app-info` 返回 200 后再继续，QA 完必须 `Stop-Process -Id <pid> -Force` 并确认 3000 端口清空。
+- 验证优先级从轻到重：`py_compile` / LSP / `rg` 静态断言 / 小脚本断言 / `curl` API；浏览器或 Playwright 只作为最后手段。
+- 只有改动真实用户浏览路径、DOM/iframe/交互、CSS 可见状态，或轻量断言无法覆盖时，才打开浏览器验证；不要每次修改后默认浏览器 QA。
 
 ## 常见冲突热点
 
