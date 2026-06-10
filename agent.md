@@ -1,11 +1,11 @@
 # Agent Notes: OhMyCanvas 二开维护指南
 
-本仓库是基于上游 `mcnxiaoyu-ctrl/Infinite-Canvas` 的二开项目。后续合并上游更新时，先把本文件当作冲突解决参考：上游改动优先吸收，但下列二开行为属于本仓库当前保留项，除非用户明确要求，不要在冲突中误删或改回上游默认。
+本仓库是基于上游 `hero8152/Infinite-Canvas` 的二开项目。后续合并更新时，先把本文件当作冲突解决参考：上游改动优先吸收，但下列二开行为属于本仓库当前保留项，除非用户明确要求，不要在冲突中误删或改回上游默认。
 
 ## 仓库关系
 
 - 当前 fork：`https://github.com/jingjie1135/OhMyCanvas.git`
-- 上游仓库：`https://github.com/mcnxiaoyu-ctrl/Infinite-Canvas.git`
+- 原项目仓库：`https://github.com/hero8152/Infinite-Canvas.git`
 - 默认分支：`main`
 - 合并上游前建议新建临时分支，先读 `git diff upstream/main...main` 和近期提交，再处理冲突。
 
