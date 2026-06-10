@@ -141,14 +141,17 @@
         "api.recommendAccountTitle": { zh: "GPT / Codex / Claude 账号订阅", en: "GPT / Codex / Claude Account Subscriptions" },
         "api.recommendAccountDesc": { zh: "独立订阅、成品账号等选择，适合想直充自己账户的人。", en: "Independent subscriptions and ready-to-use accounts for users who want direct account access." },
         "api.viewPlans": { zh: "查看方案", en: "View Plans" },
-        "api.recommendApimartSummary": { zh: "聚合多类型生成模型，适合希望用一套配置快速接入图像、视频和 LLM 的用户。", en: "Aggregates multiple generation model types for quickly connecting image, video, and LLM workflows with one setup." },
-        "api.recommendFhlSummary": { zh: "偏向 OpenAI 兼容体验，适合需要 Codex、GPT image 2 等模型能力的配置。", en: "OpenAI-compatible experience for Codex, GPT image 2, and related model capabilities." },
-        "api.recommendYuliSummary": { zh: "模型种类齐全，图像、视频、LLM 一站覆盖，支持每日签到送积分，适合想低成本尝鲜各类模型的用户。", en: "Full coverage of image, video, and LLM models with daily check-in credits — great for low-cost access to a wide model lineup." },
-        "api.recommendYuliPerk": { zh: "签到送积分", en: "Daily check-in credits" },
+        "api.recommendMirrorSummary": { zh: "模型种类齐全，图像、视频、LLM 一站覆盖，支持每日签到送积分，适合想低成本尝鲜各类模型的用户。", en: "Full coverage of image, video, and LLM models with daily check-in credits — great for low-cost access to a wide model lineup." },
+        "api.recommendMirrorPerk": { zh: "签到送积分", en: "Daily check-in credits" },
+        "api.recommendAdSlotSummary": { zh: "占位（广告位招租）", en: "Placeholder advertising slot" },
+        "api.noInviteLink": { zh: "暂无邀请链接", en: "No invite link" },
+        "api.adSlotTag": { zh: "广告位招租", en: "Ad slot" },
         "api.recommendFeatured": { zh: "首选推荐", en: "Top Pick" },
         "api.tagImageModels": { zh: "图像模型", en: "Image Models" },
         "api.tagVideoModels": { zh: "视频模型", en: "Video Models" },
         "api.tagLlmModels": { zh: "LLM模型", en: "LLM Models" },
+        "api.tagGemini": { zh: "Gemini 协议", en: "Gemini Protocol" },
+        "api.tagJimeng": { zh: "即梦协议", en: "Jimeng Protocol" },
         "api.tagGptImage2": { zh: "GPT image 2模型", en: "GPT image 2 Models" }
     });
 })();

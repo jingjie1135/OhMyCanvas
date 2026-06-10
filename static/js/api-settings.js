@@ -93,12 +93,12 @@ const ONBOARDING_GUIDES = {
         descKey:'api.rhOnboardingDesc',
         primaryLabelKey:'api.rhGetKeyCn',
         secondaryLabelKey:'api.rhGetKeyGlobal',
-        primaryUrl:'https://www.runninghub.cn/enterprise-api/consumerApi?inviteCode=rh-v1331',
-        secondaryUrl:'https://www.runninghub.ai/enterprise-api/consumerApi?inviteCode=rh-v1331',
+        primaryUrl:'https://www.runninghub.cn/?inviteCode=55fa0e9e',
+        secondaryUrl:'https://www.runninghub.ai/?inviteCode=q0ozo24o',
         walletPrimaryLabelKey:'api.rhGetWalletKeyCn',
         walletSecondaryLabelKey:'api.rhGetWalletKeyGlobal',
-        walletPrimaryUrl:'https://www.runninghub.cn/enterprise-api/sharedApi?inviteCode=rh-v1331',
-        walletSecondaryUrl:'https://www.runninghub.ai/enterprise-api/sharedApi?inviteCode=rh-v1331'
+        walletPrimaryUrl:'占位',
+        walletSecondaryUrl:'占位'
     }
 };
 let rhWorkflowEditorState = { open:false, index:-1, entry:null, config:null, expanded:{}, activeNodeId:'', graph:{ k:1, x:0, y:0, w:0, h:0 }, pan:null, bound:false, previewParams:{}, previewRunning:false, previewStatus:'', previewOutputs:[] };
@@ -107,40 +107,44 @@ let recommendInlineOpen = false;
 let providerDragId = '';
 const RECOMMENDED_APIS = [
     {
-        name:'APIMART',
-        base_url:'https://api.apimart.ai',
-        protocol:'apimart',
-        register_url:'https://apimart.ai/zh/register?aff=1uyAbb',
-        tagKeys:['api.tagImageModels','api.tagVideoModels','api.tagLlmModels'],
-        icons:['IMG','VID','LLM'],
-        summaryKey:'api.recommendApimartSummary',
-        advantages:['模型类型覆盖广', '适合多节点混合工作流', '异步协议适合长任务']
-    },
-    {
-        name:'玉玉API',
-        base_url:'https://yuli.host',
+        name:'镜界AI',
+        base_url:'https://mirror.zeabur.app',
         protocol:'openai',
-        register_url:'https://yuli.host/register?aff=95JQ',
-        tagKeys:['api.tagImageModels','api.tagVideoModels','api.tagLlmModels'],
+        register_url:'',
+        tagKeys:['api.tagImageModels','api.tagVideoModels','api.tagLlmModels','api.tagGemini','api.tagJimeng'],
         icons:['IMG','VID','LLM'],
-        summaryKey:'api.recommendYuliSummary',
-        perkKey:'api.recommendYuliPerk',
-        advantages:['模型种类最全', '图像/视频/LLM 全覆盖', '支持签到送积分'],
-        // 添加平台时预填的默认模型列表（含逐模型协议覆盖）
-        image_models:['gpt-image-2', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview'],
+        summaryKey:'api.recommendMirrorSummary',
+        perkKey:'api.recommendMirrorPerk',
+        advantages:['模型种类齐全', '图像/视频/LLM 一站覆盖', '支持每日签到送积分'],
+        image_models:['gpt-image-2', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview', '5.0'],
         chat_models:['gpt-5.5'],
-        video_models:['veo3.1-fast'],
-        model_protocols:{'gemini-3.1-flash-image-preview':'gemini', 'gemini-3-pro-image-preview':'gemini'}
+        video_models:['veo3.1-fast', 'seedance2.0fast_vip'],
+        model_protocols:{
+            'gemini-3.1-flash-image-preview':'gemini',
+            'gemini-3-pro-image-preview':'gemini',
+            '5.0':'jimeng',
+            'seedance2.0fast_vip':'jimeng'
+        }
     },
     {
-        name:'FHL',
-        base_url:'https://www.fhl.mom',
+        name:'占位（广告位招租）',
+        base_url:'https://api.example.com/v1',
         protocol:'openai',
-        register_url:'https://www.fhl.mom/register?aff=86L574B4T2N9',
-        tagKeys:['Codex','api.tagGptImage2'],
-        icons:['CODEX','GPT','IMG'],
-        summaryKey:'api.recommendFhlSummary',
-        advantages:['OpenAI 兼容接入', '配置路径简单', '适合图像与代码相关模型']
+        register_url:'占位',
+        tagKeys:['api.adSlotTag'],
+        icons:['AD'],
+        summaryKey:'api.recommendAdSlotSummary',
+        advantages:['广告位招租']
+    },
+    {
+        name:'占位（广告位招租）',
+        base_url:'https://api.example.com/v1',
+        protocol:'openai',
+        register_url:'占位',
+        tagKeys:['api.adSlotTag'],
+        icons:['AD'],
+        summaryKey:'api.recommendAdSlotSummary',
+        advantages:['广告位招租']
     }
 ];
 
@@ -1934,7 +1938,7 @@ function renderRecommendApi(){
                     <div class="recommend-guide-source onboarding-rh-source-group">
                         <div class="onboarding-rh-source-label">${escapeHtml(tr('api.getKey'))}</div>
                         <div class="onboarding-key-actions onboarding-rh-key-actions recommend-single-action">
-                            <a class="onboarding-key-btn recommend-guide-key-btn" href="${escapeAttr(api.register_url)}" target="_blank" rel="noopener noreferrer"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.getKey'))}</span></a>
+                            ${api.register_url ? `<a class="onboarding-key-btn recommend-guide-key-btn" href="${escapeAttr(api.register_url)}" target="_blank" rel="noopener noreferrer"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.getKey'))}</span></a>` : `<span class="onboarding-key-btn recommend-guide-key-btn is-disabled" aria-disabled="true"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.noInviteLink'))}</span></span>`}
                         </div>
                     </div>
                     <div class="recommend-flow-arrow onboarding-flow-arrow recommend-guide-arrow" aria-hidden="true"><span></span><b></b></div>
@@ -1963,7 +1967,7 @@ function renderRecommendApi(){
                 <div class="recommend-account-title">${escapeHtml(tr('api.recommendAccountTitle'))}</div>
                 <div class="recommend-account-desc">${escapeHtml(tr('api.recommendAccountDesc'))}</div>
             </div>
-            <a class="onboarding-key-btn recommend-account-link" href="https://bewild.ai?code=WULIDX" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.viewPlans'))}</span></a>
+            <a class="onboarding-key-btn recommend-account-link" href="https://bewild.ai?code=LSAOCVPC" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.viewPlans'))}</span></a>
         </div>
     `;
     refreshIcons();
