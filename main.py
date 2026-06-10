@@ -160,19 +160,18 @@ class ConnectionManager:
 manager = ConnectionManager()
 GLOBAL_LOOP = None
 APP_VERSION = "2026.06.03"
-GITHUB_REPO_URL = "https://github.com/hero8152/Infinite-Canvas"
-GITHUB_VERSION_URL = "https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main/VERSION"
-GITHUB_TREE_URL = "https://api.github.com/repos/hero8152/Infinite-Canvas/git/trees/main?recursive=1"
-GITHUB_RAW_ROOT = "https://raw.githubusercontent.com/hero8152/Infinite-Canvas/main"
-MODELSCOPE_REPO_URL = "https://modelscope.ai/studios/daniel8152/Infinite-Canvas"
-MODELSCOPE_RAW_ROOT = "https://www.modelscope.ai/studios/daniel8152/Infinite-Canvas/raw/main"
-# ModelScope 仓库默认分支为 master；raw 网页路径会返回 HTML，必须用仓库文件 API 才能拿到纯文本
-# 注意：.ai 站命名空间为小写 daniel8152，API 路径大小写敏感（推送/文件 API 用大写会 404/拒绝）
-MODELSCOPE_FILE_API_ROOT = "https://www.modelscope.ai/api/v1/studio/daniel8152/Infinite-Canvas/repo?Revision=master&FilePath="
-MODELSCOPE_VERSION_URL = MODELSCOPE_FILE_API_ROOT + "VERSION"
-MODELSCOPE_TREE_URL = "https://www.modelscope.ai/api/v1/studio/daniel8152/Infinite-Canvas/repo/files?Revision=master&Recursive=true"
+GITHUB_REPO_URL = "https://github.com/jingjie1135/OhMyCanvas"
+GITHUB_VERSION_URL = "https://raw.githubusercontent.com/jingjie1135/OhMyCanvas/main/VERSION"
+GITHUB_TREE_URL = "https://api.github.com/repos/jingjie1135/OhMyCanvas/git/trees/main?recursive=1"
+GITHUB_RAW_ROOT = "https://raw.githubusercontent.com/jingjie1135/OhMyCanvas/main"
+# ModelScope update source has no replacement URL yet; keep placeholders so the app no longer points at the original project.
+MODELSCOPE_REPO_URL = "占位"
+MODELSCOPE_RAW_ROOT = "占位"
+MODELSCOPE_FILE_API_ROOT = "占位"
+MODELSCOPE_VERSION_URL = "占位"
+MODELSCOPE_TREE_URL = "占位"
 PROJECT_UPDATE_DISABLED = True
-PROJECT_UPDATE_DISABLED_DETAIL = "OhMyCanvas 二开版本已禁用内置一键更新，请通过 Git 手动同步上游，避免覆盖本地二开改动。"
+PROJECT_UPDATE_DISABLED_DETAIL = "OhMyCanvas 已禁用内置一键更新，请通过 Git 手动同步更新，避免覆盖本地二开改动。"
 
 @app.on_event("startup")
 async def startup_event():
