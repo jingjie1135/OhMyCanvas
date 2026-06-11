@@ -3550,6 +3550,9 @@ def is_agnes_provider(provider, model=""):
     model_id = str(model or "").strip().lower()
     return "apihub.agnes-ai.com" in base_url or model_id.startswith("agnes-video-")
 
+def is_firefly_video_model(model=""):
+    return str(model or "").strip().lower().startswith("firefly")
+
 # ---- 数字人/真人认证：平台无关分发 ----
 # 认证是一个跨平台功能。每个平台用不同的资产 API 实现，但对外是统一入口。
 # 新增平台时：在 avatar_platform_for_provider 里加一条识别，并把平台键加进
@@ -9512,6 +9515,32 @@ def _collect_video_url(value, urls):
             if key in value:
                 _collect_video_url(value.get(key), urls)
 
+def _collect_text_video_urls(value, urls):
+    text = str(value or "")
+    for match in re.finditer(r"https?://[^\s\"'<>]+", text):
+        url = match.group(0).rstrip('),.，。；;]}"')
+        if url:
+            urls.append(url)
+
+def chat_response_video_urls(raw):
+    data = unwrap_apimart_response(raw) if isinstance(raw, dict) else raw
+    choices = data.get("choices") if isinstance(data, dict) else None
+    if not isinstance(choices, list):
+        return []
+    urls = []
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        message = choice.get("message") or {}
+        content = message.get("content") if isinstance(message, dict) else None
+        _collect_video_url(content, urls)
+        _collect_text_video_urls(content, urls)
+    deduped = []
+    for url in urls:
+        if url and url not in deduped:
+            deduped.append(url)
+    return deduped
+
 def video_output_urls(raw):
     urls = []
     if not isinstance(raw, dict):
@@ -9582,6 +9611,52 @@ def video_submit_url_candidates(provider, base_url):
     if is_yuli_provider(provider):
         return [f"{base_url}/v1/video/create"]
     return [f"{base_url}/v1/videos/generations", f"{base_url}/v2/videos/generations"]
+
+def firefly_video_content_parts(payload):
+    details = [str(payload.prompt or "").strip()]
+    if payload.duration:
+        details.append(f"时长：{payload.duration} 秒")
+    if payload.aspect_ratio:
+        details.append(f"画幅：{payload.aspect_ratio}")
+    if payload.resolution:
+        details.append(f"分辨率：{payload.resolution}")
+    if payload.size:
+        details.append(f"尺寸：{payload.size}")
+    if payload.generate_audio:
+        details.append("生成音频：是")
+    content = [{"type": "text", "text": "\n".join(item for item in details if item)}]
+    for ref in payload.images[:4]:
+        if not ref.url:
+            continue
+        ref_url = reference_to_data_url(ref.dict(), max_size=1536)
+        if ref_url:
+            content.append({"type": "image_url", "image_url": {"url": ref_url}})
+    return content
+
+async def generate_firefly_chat_video(client, payload, provider, base_url, model):
+    chat_url = f"{base_url}/v1/chat/completions"
+    body = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": firefly_video_content_parts(payload),
+            }
+        ],
+        "stream": False,
+    }
+    response = await client.post(chat_url, headers=api_headers(provider=provider, model=model), json=body)
+    response.raise_for_status()
+    try:
+        raw = response.json()
+    except Exception as exc:
+        resp_text = (response.text or "")[:500]
+        raise HTTPException(status_code=502, detail=f"Firefly 视频接口返回非 JSON 响应（状态 {response.status_code}）：{resp_text}") from exc
+    urls = chat_response_video_urls(raw) or video_output_urls(raw)
+    if not urls:
+        raise HTTPException(status_code=502, detail=f"Firefly 视频生成成功但没有返回视频：{raw}")
+    local_urls = [await save_remote_video_to_output(url) for url in urls]
+    return {"videos": local_urls, "task_id": "", "raw": raw}
 
 def video_task_url_candidates(provider, base_url, task_id, submit_url=""):
     if is_agnes_provider(provider):
@@ -9945,6 +10020,16 @@ async def canvas_video(payload: CanvasVideoRequest):
     submit_url = submit_urls[0]
     requested_model = selected_model(payload.model, "agnes-video-v2.0" if is_agnes else "veo3-fast")
     is_veo31 = is_apimart and is_apimart_veo31_model(requested_model)
+    if is_firefly_video_model(requested_model):
+        try:
+            async with httpx.AsyncClient(timeout=VIDEO_POLL_TIMEOUT) as firefly_client:
+                return await generate_firefly_chat_video(firefly_client, payload, provider, base_url, requested_model)
+        except httpx.HTTPStatusError as exc:
+            text = exc.response.text
+            raise HTTPException(status_code=exc.response.status_code, detail=f"Firefly 视频接口错误：{text}") from exc
+        except httpx.HTTPError as exc:
+            log_net_error(f"视频(Firefly) 网络/TLS错误 model={requested_model}", exc)
+            raise HTTPException(status_code=502, detail=f"请求 Firefly 视频接口失败：{exc}") from exc
     if is_agnes:
         try:
             async with httpx.AsyncClient(timeout=VIDEO_POLL_TIMEOUT) as agnes_client:
