@@ -1951,6 +1951,25 @@ function closeRecommendApi(){
     renderRecommendApi();
     renderEditor();
 }
+function isExplicitPlaceholderLink(value){
+    const text = String(value || '').trim().toLowerCase();
+    return Boolean(text) && (
+        text === '占位'
+        || text.includes('广告位招租')
+        || text.includes('example.com')
+    );
+}
+function normalizeRecommendedKeyUrl(value){
+    const url = String(value || '').trim();
+    if(!/^https?:\/\//i.test(url) || isExplicitPlaceholderLink(url)) return '';
+    return url;
+}
+function recommendedKeyUrl(api){
+    const registerUrl = normalizeRecommendedKeyUrl(api?.register_url);
+    if(registerUrl) return registerUrl;
+    if(isExplicitPlaceholderLink(api?.name) || isExplicitPlaceholderLink(api?.register_url)) return '';
+    return normalizeRecommendedKeyUrl(api?.entry_url || api?.homepage_url || api?.base_url);
+}
 function syncRecommendView(){
     if(settingsContent) settingsContent.hidden = recommendInlineOpen;
     if(recommendContent) recommendContent.hidden = !recommendInlineOpen;
@@ -1966,7 +1985,12 @@ function renderRecommendApi(){
         recommendPanel.innerHTML = '';
         return;
     }
-    const html = RECOMMENDED_APIS.map((api, index) => `
+    const html = RECOMMENDED_APIS.map((api, index) => {
+        const keyUrl = recommendedKeyUrl(api);
+        const keyButton = keyUrl
+            ? `<a class="onboarding-key-btn recommend-guide-key-btn" href="${escapeAttr(keyUrl)}" target="_blank" rel="noopener noreferrer"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.getKey'))}</span></a>`
+            : `<span class="onboarding-key-btn recommend-guide-key-btn is-disabled" aria-disabled="true"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.noLink'))}</span></span>`;
+        return `
         <section class="recommend-card recommend-platform-card" style="--recommend-index:${index}">
             <div class="recommend-platform-info">
                 <div class="recommend-platform-head">
@@ -1987,7 +2011,7 @@ function renderRecommendApi(){
                     <div class="recommend-guide-source onboarding-rh-source-group">
                         <div class="onboarding-rh-source-label">${escapeHtml(tr('api.getKey'))}</div>
                         <div class="onboarding-key-actions onboarding-rh-key-actions recommend-single-action">
-                            ${api.register_url ? `<a class="onboarding-key-btn recommend-guide-key-btn" href="${escapeAttr(api.register_url)}" target="_blank" rel="noopener noreferrer"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.getKey'))}</span></a>` : `<span class="onboarding-key-btn recommend-guide-key-btn is-disabled" aria-disabled="true"><i data-lucide="key-round" class="w-3.5 h-3.5"></i><span>${escapeHtml(tr('api.noInviteLink'))}</span></span>`}
+                            ${keyButton}
                         </div>
                     </div>
                     <div class="recommend-flow-arrow onboarding-flow-arrow recommend-guide-arrow" aria-hidden="true"><span></span><b></b></div>
@@ -2001,7 +2025,8 @@ function renderRecommendApi(){
                 </div>
             </div>
         </section>
-    `).join('');
+    `;
+    }).join('');
     recommendPanel.innerHTML = `
         <div class="onboarding-head">
             <div>

@@ -147,6 +147,7 @@
         "api.recommendAgnesFree": { zh: "免费", en: "Free" },
         "api.recommendAdSlotSummary": { zh: "占位（广告位招租）", en: "Placeholder advertising slot" },
         "api.noInviteLink": { zh: "暂无邀请链接", en: "No invite link" },
+        "api.noLink": { zh: "无链接", en: "No link" },
         "api.adSlotTag": { zh: "广告位招租", en: "Ad slot" },
         "api.recommendFeatured": { zh: "首选推荐", en: "Top Pick" },
         "api.tagImageModels": { zh: "图像模型", en: "Image Models" },
