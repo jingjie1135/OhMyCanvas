@@ -366,6 +366,81 @@ function refreshIcons(){ if(window.lucide) lucide.createIcons(); }
 function uid(prefix){ return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`; }
 function escapeHtml(str){ return String(str == null ? '' : str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s])); }
 const escapeAttr = escapeHtml;
+function smartMediaPreviewUrl(itemOrUrl, size=512){
+    const url = typeof itemOrUrl === 'string' ? itemOrUrl : (itemOrUrl?.url || '');
+    const displayUrl = displayMediaUrl(itemOrUrl);
+    const raw = String(url || '');
+    if(!raw || raw.startsWith('data:') || raw.startsWith('blob:')) return displayUrl;
+    if(!raw.startsWith('/output/') && !raw.startsWith('/assets/')) return displayUrl;
+    if(!/\.(png|jpe?g|webp|gif|bmp|avif|tiff?|mp4|webm|mov|m4v)(\?|#|$)/i.test(raw)) return displayUrl;
+    const width = Math.max(64, Math.min(2048, Math.round(Number(size) || 512)));
+    return `/api/media-preview?w=${width}&url=${encodeURIComponent(raw)}`;
+}
+function smartPreviewImgHtml(itemOrUrl, size=512, attrs=''){
+    const original = typeof itemOrUrl === 'string' ? itemOrUrl : (itemOrUrl?.url || '');
+    const preview = smartMediaPreviewUrl(itemOrUrl, size);
+    return `<img src="${escapeHtml(preview)}" data-preview-src="${escapeAttr(preview)}" data-original-src="${escapeAttr(original)}"${attrs ? ` ${attrs}` : ''}>`;
+}
+function smartVideoPreviewHtml(itemOrUrl, size=512, attrs=''){
+    const original = typeof itemOrUrl === 'string' ? itemOrUrl : (itemOrUrl?.url || '');
+    const preview = smartMediaPreviewUrl(itemOrUrl, size);
+    return `<img src="${escapeHtml(preview)}" data-preview-src="${escapeAttr(preview)}" data-original-src="${escapeAttr(original)}" data-url="${escapeAttr(original)}" data-preview-kind="video"${attrs ? ` ${attrs}` : ''}>`;
+}
+function smartVideoFallbackHtml(url, attrs=''){
+    const safe = escapeHtml(url || '');
+    return `<video src="${safe}" data-url="${safe}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"${attrs ? ` ${attrs}` : ''}></video>`;
+}
+function smartVideoPlayerHtml(url, attrs=''){
+    const safe = escapeHtml(displayMediaUrl({url:url || ''}));
+    return `<video src="${safe}" data-url="${escapeAttr(url || '')}" data-inline-video-active="1" controls autoplay playsinline preload="metadata" disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"${attrs ? ` ${attrs}` : ''}></video>`;
+}
+function smartActivateVideoPreview(target){
+    const root = target?.closest?.('.media-video-card,.video-thumb,.image-wrap,.thumb-item') || target?.parentElement || null;
+    const img = target?.matches?.('img[data-preview-kind="video"]') ? target : root?.querySelector?.('img[data-preview-kind="video"]');
+    if(!img) return false;
+    const original = img.dataset.originalSrc || img.dataset.url || '';
+    if(!original) return false;
+    const itemEl = target?.closest?.('[data-image-index]') || root?.closest?.('[data-image-index]') || root;
+    const nodeEl = target?.closest?.('.image-node') || root?.closest?.('.image-node');
+    const node = nodes.find(n => n.id === nodeEl?.dataset.id);
+    const imageIndex = Number(itemEl?.dataset?.imageIndex ?? 0);
+    const image = node?.images?.[imageIndex];
+    if(image) image._inlineVideoActive = true;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = smartVideoPlayerHtml(original);
+    const video = tpl.content.firstElementChild;
+    if(!video) return false;
+    img.replaceWith(video);
+    video.parentElement?.querySelector?.('.smart-video-play')?.style?.setProperty('display', 'none');
+    video.addEventListener('ended', () => {
+        if(image) image._inlineVideoActive = true;
+        video.dataset.inlineVideoActive = '1';
+    });
+    video.play?.().catch(() => {});
+    return true;
+}
+function isSmartPreviewImage(img){
+    return img?.tagName?.toLowerCase?.() === 'img'
+        && img.dataset?.previewSrc
+        && img.dataset?.originalSrc
+        && img.dataset.previewSrc !== img.dataset.originalSrc
+        && img.getAttribute('src') !== img.dataset.originalSrc;
+}
+function bindSmartPreviewImageFallbacks(root=document){
+    root.querySelectorAll?.('img[data-preview-src][data-original-src]:not([data-preview-fallback-bound])').forEach(img => {
+        img.dataset.previewFallbackBound = '1';
+        img.addEventListener('error', () => {
+            const original = img.dataset.originalSrc || '';
+            if(img.dataset.previewKind === 'video'){
+                const tpl = document.createElement('template');
+                tpl.innerHTML = smartVideoFallbackHtml(original, img.dataset.videoFallbackAttrs || '');
+                img.replaceWith(tpl.content.firstElementChild);
+                return;
+            }
+            if(original && img.getAttribute('src') !== original) img.src = original;
+        });
+    });
+}
 function cloneSmartSettings(source=settings){
     try {
         return JSON.parse(JSON.stringify(source || {}));
@@ -388,6 +463,7 @@ function mediaItemForStorage(item){
     delete clean.uploadedUrl;
     delete clean.originalRemoteUrl;
     delete clean.tempCloudUrl;
+    delete clean._inlineVideoActive;
     return clean;
 }
 function canvasForStorage(){
@@ -919,14 +995,28 @@ function createImageNodeAt(point, images=[], options={}){
     const layout = imageLayout(images || [], mediaNodeDefaultScale({type:'smart-image', images:images || []}), {type:'smart-image', images:images || []});
     return createNode((point?.x || 0) - Math.round(layout.width / 2), (point?.y || 0) - Math.round(layout.height / 2), images, options);
 }
+function mediaLayoutSize(img){
+    const width = Number(img?.natural_w || img?.width || img?.w || img?.layout_w || img?.preview_w || 0);
+    const height = Number(img?.natural_h || img?.height || img?.h || img?.layout_h || img?.preview_h || 0);
+    return width > 0 && height > 0 ? {width, height} : {width:0, height:0};
+}
+function copyMediaSizeFields(source, target={}){
+    if(!source || typeof source !== 'object') return target;
+    ['natural_w','natural_h','width','height','w','h','layout_w','layout_h'].forEach(key => {
+        const n = Number(source[key]);
+        if(Number.isFinite(n) && n > 0) target[key] = n;
+    });
+    return target;
+}
 function singleImageLayout(image, node, scale){
     const explicitW = Number(node?.w);
     const explicitH = Number(node?.h);
     if(Number.isFinite(explicitW) && explicitW > 24 && Number.isFinite(explicitH) && explicitH > 24){
         return {cols:1, rows:1, width:Math.round(explicitW), height:Math.round(explicitH), thumb:Math.round(96 * scale), single:true};
     }
-    const naturalW = Number(image?.natural_w || image?.width || 0);
-    const naturalH = Number(image?.natural_h || image?.height || 0);
+    const layoutSize = mediaLayoutSize(image);
+    const naturalW = layoutSize.width;
+    const naturalH = layoutSize.height;
     if(naturalW > 0 && naturalH > 0){
         const maxW = 260 * scale;
         const maxH = 220 * scale;
@@ -1005,8 +1095,8 @@ function smartNodeInputThumbsHtml(images, opts={}){
         const media = isAudioMediaItem(img)
             ? `<div class="media-thumb audio-thumb"><i data-lucide="file-audio"></i><span>${escapeHtml(img.name || 'Audio')}</span></div>`
             : isVideoMediaItem(img)
-            ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>`
-            : `<img src="${escapeHtml(img.url)}" alt="">`;
+            ? smartVideoPreviewHtml(img, 256, 'alt=""')
+            : smartPreviewImgHtml(img, 256, 'alt=""');
         return `<div class="smart-node-input-thumb" title="${escapeHtml(label)}">${media}<span class="smart-node-input-badge">${escapeHtml(label)}</span></div>`;
     }).join('');
     const more = refs.length > limit ? `<div class="smart-node-input-thumb smart-node-input-more">+${refs.length - limit}</div>` : '';
@@ -3927,10 +4017,10 @@ function assetMediaKind(item){
 }
 function assetThumbHtml(item){
     const url = escapeAttr(item.url || '');
-    const thumb = escapeAttr(item.thumbnail || item.thumb || item.preview || item.url || '');
+    const thumb = item.thumbnail || item.thumb || item.preview || item.url || '';
     const kind = assetMediaKind(item);
     if(kind === 'video'){
-        return `<div class="asset-thumb-wrap"><video class="asset-thumb" src="${url}" data-url="${url}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video><span class="asset-video-badge"><i data-lucide="film"></i>VIDEO</span></div>`;
+        return `<div class="asset-thumb-wrap">${smartVideoPreviewHtml(item, 512, 'class="asset-thumb" alt=""')}<span class="asset-video-badge"><i data-lucide="film"></i>VIDEO</span></div>`;
     }
     if(kind === 'audio'){
         return `<div class="asset-thumb-wrap media-thumb audio-thumb asset-thumb"><i data-lucide="file-audio"></i><span>${escapeHtml(item.name || 'Audio')}</span></div>`;
@@ -3938,7 +4028,7 @@ function assetThumbHtml(item){
     if(kind === 'workflow'){
         return `<div class="asset-thumb-wrap media-thumb workflow-thumb asset-thumb"><i data-lucide="workflow"></i><span>${escapeHtml(item.name || 'Workflow')}</span></div>`;
     }
-    return `<img class="asset-thumb" src="${thumb}" alt="">`;
+    return smartPreviewImgHtml({...item, url:thumb}, 512, 'class="asset-thumb" alt=""');
 }
 function renderAssetLibrary(){
     if(!assetPanel || !assetGrid || !assetCategorySelect) return;
@@ -3980,6 +4070,7 @@ function renderAssetLibrary(){
     `).join('') : `<div class="asset-empty">${escapeHtml(localMode ? '暂无本地素材，请在素材库管理中上传' : (workflowMode ? '暂无工作流资产' : tr('smart.assetEmpty')))}</div>`;
     if(workflowMode) bindWorkflowAssetItemEvents();
     else bindAssetItemEvents();
+    bindSmartPreviewImageFallbacks(assetGrid);
     refreshIcons();
 }
 function openAssetNameDialog({title='', value='', placeholder='', cancelValue='', multiline=false }={}){
@@ -4618,6 +4709,9 @@ function isVideoMediaItem(img){
     const url = String(img.url || '').toLowerCase();
     return /\.(mp4|webm|mov|m4v)(\?|$)/.test(url);
 }
+function isInlineVideoActive(img){
+    return Boolean(img && img._inlineVideoActive);
+}
 function isAudioMediaItem(img){
     if(!img) return false;
     if(img.kind === 'audio') return true;
@@ -4687,7 +4781,14 @@ function resultMediaUrls(result){
         if(typeof value === 'object'){
             if(value.url || value.path || value.src || value.uri){
                 const url = value.url || value.path || value.src || value.uri;
-                if(url) urls.push({url, kind:value.kind || value.type || value.mediaKind || '', name:value.name || value.filename || ''});
+                if(url){
+                    const item = {url, kind:value.kind || value.type || value.mediaKind || '', name:value.name || value.filename || ''};
+                    ['natural_w','natural_h','width','height','w','h','layout_w','layout_h'].forEach(key => {
+                        const n = Number(value[key]);
+                        if(Number.isFinite(n) && n > 0) item[key] = n;
+                    });
+                    urls.push(item);
+                }
             }
             ['outputs','videos','images','urls','data','result'].forEach(key => add(value[key]));
             ['url','path','src','uri','output','output_url','outputUrl','video','video_url','videoUrl','mp4_url','mp4Url','download_url','downloadUrl','preview_url','previewUrl'].forEach(key => add(value[key]));
@@ -4735,8 +4836,8 @@ function audioRefsOnly(refs){
 function thumbMediaHtml(img){
     if(isFileMediaItem(img) || isTextMediaItem(img)) return `<div class="media-thumb file-thumb" data-media-url="${escapeAttr(img.url || '')}" data-media-kind="${escapeAttr(mediaKindForItem(img))}"><i data-lucide="${isTextMediaItem(img) ? 'file-text' : 'file'}"></i><span>${escapeHtml(img.name || (isTextMediaItem(img) ? 'Text' : 'File'))}</span></div>`;
     if(isAudioMediaItem(img)) return `<div class="media-thumb audio-thumb" data-media-url="${escapeAttr(img.url || '')}" data-media-kind="audio"><i data-lucide="file-audio"></i><span>${escapeHtml(img.name || 'Audio')}</span></div>`;
-    if(isVideoMediaItem(img)) return `<div class="media-thumb video-thumb"><video src="${escapeHtml(img.url)}" data-url="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video></div>`;
-    return `<img src="${escapeHtml(displayMediaUrl(img))}" data-original-src="${escapeAttr(img.url || '')}" draggable="false">`;
+    if(isVideoMediaItem(img)) return `<div class="media-thumb video-thumb">${isInlineVideoActive(img) ? smartVideoPlayerHtml(img.url || '') : `${smartVideoPreviewHtml(img, 512, 'alt=""')}<button class="smart-video-play thumb-video-play" type="button" title="播放"><i data-lucide="play"></i></button>`}</div>`;
+    return smartPreviewImgHtml(img, 512, 'draggable="false"');
 }
 function imageResolutionLabel(img){
     const w = Number(img?.natural_w || img?.width || img?.w || 0);
@@ -4749,8 +4850,9 @@ function imageResolutionBadgeHtml(img){
 }
 function thumbDisplaySize(img, maxSize){
     const limit = Math.max(28, Math.round(Number(maxSize) || 96));
-    const w = Number(img?.natural_w || img?.width || img?.w || 0);
-    const h = Number(img?.natural_h || img?.height || img?.h || 0);
+    const size = mediaLayoutSize(img);
+    const w = size.width;
+    const h = size.height;
     if(!(w > 0 && h > 0)) return {width:limit, height:limit};
     const fit = Math.min(limit / w, limit / h);
     return {
@@ -4795,8 +4897,8 @@ function updateImageResolutionBadgeElement(itemEl, img){
 function singleMediaHtml(img, w, h){
     if(isFileMediaItem(img) || isTextMediaItem(img)) return `<div class="node-img media-card media-file-card" style="width:${w}px;height:${h}px"><div class="media-card-icon"><i data-lucide="${isTextMediaItem(img) ? 'file-text' : 'file'}"></i></div><div class="media-card-title">${escapeHtml(img.name || (isTextMediaItem(img) ? 'Text' : 'File'))}</div><div class="media-card-sub">${isTextMediaItem(img) ? 'TEXT' : 'FILE'}</div></div>`;
     if(isAudioMediaItem(img)) return `<div class="node-img media-card media-audio-card" style="width:${w}px;height:${h}px"><div class="media-card-icon"><i data-lucide="file-audio"></i></div><div class="media-card-title">${escapeHtml(img.name || 'Audio')}</div><div class="media-card-sub">AUDIO</div><audio src="${escapeAttr(img.url || '')}" data-url="${escapeAttr(img.url || '')}" controls preload="metadata"></audio></div>`;
-    if(isVideoMediaItem(img)) return `<div class="node-img media-card media-video-card" style="width:${w}px;height:${h}px"><video src="${escapeHtml(img.url)}" data-url="${escapeHtml(img.url)}" controls muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video></div>`;
-    return `<img class="node-img" src="${escapeHtml(displayMediaUrl(img))}" data-original-src="${escapeAttr(img.url || '')}" draggable="false" style="width:${w}px;height:${h}px">`;
+    if(isVideoMediaItem(img)) return `<div class="node-img media-card media-video-card" style="width:${w}px;height:${h}px">${isInlineVideoActive(img) ? smartVideoPlayerHtml(img.url || '') : `${smartVideoPreviewHtml(img, 768, 'alt=""')}<button class="smart-video-play" type="button" title="播放"><i data-lucide="play"></i></button>`}</div>`;
+    return smartPreviewImgHtml(img, 768, `class="node-img" draggable="false" style="width:${w}px;height:${h}px"`);
 }
 function smartNodeHasLiveMedia(node){
     return Boolean(!node?.pending && (node?.images || []).some(img => img?.url));
@@ -5091,7 +5193,7 @@ function renderSmartCanvasLog(){
         const thumbs = (log.outputs || []).slice(0, 8).map(url => {
             const safe = escapeAttr(url);
             const kind = outputUrlLooksVideo(url) ? 'video' : 'image';
-            return kind === 'video' ? `<video src="${safe}" data-url="${safe}" data-kind="video" muted playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>` : `<img src="${safe}" data-url="${safe}" data-kind="image" alt="output">`;
+            return kind === 'video' ? smartVideoPreviewHtml(url, 256, 'data-kind="video" alt="output"') : smartPreviewImgHtml(url, 256, 'data-kind="image" alt="output"');
         }).join('');
         const date = new Date(log.createdAt || Date.now()).toLocaleString(window.StudioI18n?.lang() === 'en' ? 'en-US' : 'zh-CN');
         const req = log.request || {};
@@ -5118,6 +5220,7 @@ function renderSmartCanvasLog(){
             <div class="log-thumbs">${thumbs}</div>
         </div>`;
     }).join('') : `<div class="log-empty">${escapeHtml(tr('canvas.noLogs'))}</div>`;
+    bindSmartPreviewImageFallbacks(smartLogList);
     smartLogList.querySelectorAll('[data-url]').forEach(el => {
         el.onclick = e => {
             e.stopPropagation();
@@ -5317,6 +5420,10 @@ function nodeBodyHtml(node, layout){
     if(node.jimengPending && node.jimengPending.submitId && imgs.length === 0){
         return jimengPendingBodyHtml(node, layout);
     }
+    const recoverTask = smartRecoverableImageTask(node);
+    if(recoverTask && imgs.length === 0){
+        return imageTaskRecoverBodyHtml(node, recoverTask, layout);
+    }
     if(node.queued && imgs.length === 0 && !node.pending){
         return `<div class="loading-cell single queued" style="width:${layout.width}px;height:${layout.height}px"></div>`;
     }
@@ -5349,6 +5456,23 @@ function jimengPendingBodyHtml(node, layout){
             <div class="jimeng-pending-text">${escapeHtml(queueText)}</div>
             <div class="jimeng-pending-sub">任务未丢失，可继续等待或手动查询</div>
             <button class="jimeng-pending-query" type="button" data-jimeng-query="${escapeAttr(node.id)}" ${querying ? 'disabled' : ''}><i data-lucide="${querying ? 'loader-2' : 'refresh-cw'}"></i><span>${querying ? '查询中…' : '查询结果'}</span></button>
+        </div>
+    </div>`;
+}
+function smartRecoverableImageTask(node){
+    return smartPendingTasks(node).find(task => task.failed && task.recoverTaskId) || null;
+}
+function imageTaskRecoverBodyHtml(node, task, layout){
+    const querying = Boolean(task.querying);
+    const failedCount = smartPendingTasks(node).filter(item => item.failed && item.recoverTaskId).length;
+    const title = querying ? '查询中' : '任务未丢失';
+    const sub = failedCount > 1 ? `还有 ${failedCount} 个任务可查询` : `任务 ID：${task.recoverTaskId || ''}`;
+    return `<div class="jimeng-pending-cell loading-cell single" style="width:${layout.width}px;height:${layout.height}px">
+        <div class="jimeng-pending-overlay">
+            <div class="jimeng-pending-spinner"><i data-lucide="${querying ? 'loader-2' : 'refresh-cw'}"></i></div>
+            <div class="jimeng-pending-text">${escapeHtml(title)}</div>
+            <div class="jimeng-pending-sub">${escapeHtml(sub)}</div>
+            <button class="jimeng-pending-query" type="button" data-image-task-query="${escapeAttr(node.id)}" data-task-id="${escapeAttr(task.taskId)}" ${querying ? 'disabled' : ''}><i data-lucide="${querying ? 'loader-2' : 'refresh-cw'}"></i><span>${querying ? '查询中…' : '查询结果'}</span></button>
         </div>
     </div>`;
 }
@@ -5472,8 +5596,19 @@ function refreshRunTimerPills(){
     if(active && !runTimerInterval) runTimerInterval = setInterval(refreshRunTimerPills, 1000);
     if(!active && runTimerInterval){ clearInterval(runTimerInterval); runTimerInterval = null; }
 }
+function rememberInlineVideoActivations(){
+    world.querySelectorAll('.image-node [data-image-index] video[data-inline-video-active="1"]').forEach(video => {
+        const nodeEl = video.closest('.image-node');
+        const itemEl = video.closest('[data-image-index]');
+        const node = nodes.find(n => n.id === nodeEl?.dataset.id);
+        const index = Number(itemEl?.dataset.imageIndex ?? 0);
+        const image = node?.images?.[index];
+        if(image && mediaKindForItem(image) === 'video') image._inlineVideoActive = true;
+    });
+}
 function render(){
     if(smartWorkflowTransferModal?.classList.contains('open')) updateSmartWorkflowTransferMeta();
+    rememberInlineVideoActivations();
     world.classList.toggle('smart-multi-selected', selectedNodeIds().length > 1);
     const composerEl = composer;
     const mediaStates = captureMediaPlaybackStates();
@@ -5543,6 +5678,7 @@ function render(){
     updateComposer();
     renderMinimap();
     if(window.lucide) lucide.createIcons();
+    bindSmartPreviewImageFallbacks(world);
     measureSmartNodeImages();
     refreshRunTimerPills();
     return;
@@ -5593,12 +5729,24 @@ function measureSmartNodeImages(){
         const image = node?.images?.[index];
         if(imgEl.tagName?.toLowerCase() === 'img' && image?.url) bindImageProxyFallback(imgEl, image);
         if(!node || !image || image.natural_w || image.natural_h) return;
+        const isPreview = isSmartPreviewImage(imgEl);
+        if(isPreview && image.layout_w && image.layout_h) return;
         const apply = () => {
             const w = imgEl.naturalWidth || imgEl.videoWidth || 0;
             const h = imgEl.naturalHeight || imgEl.videoHeight || 0;
             if(w <= 0 || h <= 0 || image.natural_w || image.natural_h) return;
-            image.natural_w = w;
-            image.natural_h = h;
+            const prevW = Number(image.layout_w || 0);
+            const prevH = Number(image.layout_h || 0);
+            if(isPreview){
+                if(prevW === w && prevH === h) return;
+                image.layout_w = w;
+                image.layout_h = h;
+            } else {
+                image.natural_w = w;
+                image.natural_h = h;
+                delete image.layout_w;
+                delete image.layout_h;
+            }
             applyThumbDisplaySizeToElement(itemEl, image, Math.max(itemEl?.clientWidth || 0, itemEl?.clientHeight || 0));
             updateImageResolutionBadgeElement(itemEl, image);
             if((node.images || []).length === 1 && !node.w && !node.h){
@@ -6087,6 +6235,13 @@ function bindNodeEvents(){
                 queryJimengNow(btn.dataset.jimengQuery);
             });
         });
+        el.querySelectorAll('[data-image-task-query]').forEach(btn => {
+            btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); }, true);
+            btn.addEventListener('click', e => {
+                e.preventDefault(); e.stopPropagation();
+                querySmartImageTaskNow(btn.dataset.imageTaskQuery, btn.dataset.taskId);
+            });
+        });
         el.querySelectorAll('[data-thumb-scroll]').forEach(scroller => {
             scroller.addEventListener('wheel', e => {
                 e.stopPropagation();
@@ -6098,12 +6253,33 @@ function bindNodeEvents(){
                 deleteImage(id, Number(btn.dataset.imageIndex));
             });
         });
+        el.querySelectorAll('.smart-video-play').forEach(btn => {
+            btn.addEventListener('mousedown', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+            }, true);
+            btn.addEventListener('click', e => {
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                const item = btn.closest('[data-image-index]');
+                const imageIndex = Number(item?.dataset.imageIndex || 0);
+                const owner = nodes.find(n => n.id === id);
+                if(mediaKindForItem(owner?.images?.[imageIndex] || {}) !== 'video') return;
+                clearImageClickTimer();
+                suppressImageClickUntil = Date.now() + 260;
+                hideRunTimerForNode(owner);
+                smartActivateVideoPreview(btn);
+            }, true);
+        });
         el.querySelectorAll('.thumb-item,.image-wrap').forEach(item => {
             item.setAttribute('draggable', 'false');
             item.addEventListener('dragstart', e => {
                 e.preventDefault();
             });
             item.addEventListener('mousedown', e => {
+                if(e.target.closest('video,audio')) return;
                 if(e.button !== 0 || e.target.closest('.image-delete')) return;
                 if(e.detail < 2) return;
                 e.preventDefault();
@@ -6111,18 +6287,33 @@ function bindNodeEvents(){
                 e.stopImmediatePropagation();
                 clearImageClickTimer();
                 suppressImageClickUntil = Date.now() + 260;
+                const imageIndex = Number(item.dataset.imageIndex || 0);
+                const owner = nodes.find(n => n.id === id);
+                if(mediaKindForItem(owner?.images?.[imageIndex] || {}) === 'video'){
+                    smartActivateVideoPreview(item);
+                    return;
+                }
                 selectedId = id;
                 selectedIds = [];
-                selectedImage = {nodeId:id, index:Number(item.dataset.imageIndex || 0)};
-                openImagePreview(id, Number(item.dataset.imageIndex || 0));
+                selectedImage = {nodeId:id, index:imageIndex};
+                openImagePreview(id, imageIndex);
             }, true);
             item.addEventListener('click', e => {
+                if(e.target.closest('video,audio')) return;
                 if(e.target.closest('.image-delete')) return;
                 e.preventDefault();
                 e.stopPropagation();
                 e.stopImmediatePropagation();
                 if(Date.now() < suppressImageClickUntil) return;
                 const imageIndex = Number(item.dataset.imageIndex || 0);
+                const owner = nodes.find(n => n.id === id);
+                if(mediaKindForItem(owner?.images?.[imageIndex] || {}) === 'video'){
+                    clearImageClickTimer();
+                    suppressImageClickUntil = Date.now() + 260;
+                    hideRunTimerForNode(owner);
+                    smartActivateVideoPreview(item);
+                    return;
+                }
                 if(e.detail >= 2){
                     clearImageClickTimer();
                     suppressImageClickUntil = Date.now() + 260;
@@ -6135,7 +6326,6 @@ function bindNodeEvents(){
                 clearImageClickTimer();
                 imageClickTimer = setTimeout(() => {
                     imageClickTimer = null;
-                const owner = nodes.find(n => n.id === id);
                 hideRunTimerForNode(owner);
                 const isGroupOwner = (owner?.images || []).length > 1;
                 selectedId = id;
@@ -6150,20 +6340,28 @@ function bindNodeEvents(){
                 }, 220);
             });
         item.addEventListener('dblclick', e => {
+            if(e.target.closest('video,audio')) return;
             if(e.target.closest('.image-delete')) return;
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
             clearImageClickTimer();
             suppressImageClickUntil = Date.now() + 260;
+            const imageIndex = Number(item.dataset.imageIndex || 0);
+            const owner = nodes.find(n => n.id === id);
+            if(mediaKindForItem(owner?.images?.[imageIndex] || {}) === 'video'){
+                smartActivateVideoPreview(item);
+                return;
+            }
             selectedId = id;
             selectedIds = [];
-            selectedImage = {nodeId:id, index:Number(item.dataset.imageIndex || 0)};
-            openImagePreview(id, Number(item.dataset.imageIndex || 0));
+            selectedImage = {nodeId:id, index:imageIndex};
+            openImagePreview(id, imageIndex);
         }, true);
         });
         el.querySelectorAll('.thumb-item').forEach(item => {
             item.addEventListener('mousedown', e => {
+                if(e.target.closest('video,audio')) return;
                 if(e.button !== 0 || e.target.closest('.mini-x')) return;
                 if(e.detail >= 2) return;
                 const node = nodes.find(n => n.id === id);
@@ -7384,7 +7582,8 @@ function refreshComparePanel(){
     }
     if(previewCompareOn){
         thumbsEl.style.display = 'inline-flex';
-        thumbsEl.innerHTML = sources.map((s, i) => `<button type="button" class="compare-thumb ${i === previewCompareIndex ? 'active' : ''}" data-compare-idx="${i}" title="${escapeHtml(i === previewCompareIndex ? tr('smart.compareCancelTip') : tr('smart.compareUseTip'))}"><img src="${escapeHtml(s.url)}"></button>`).join('');
+        thumbsEl.innerHTML = sources.map((s, i) => `<button type="button" class="compare-thumb ${i === previewCompareIndex ? 'active' : ''}" data-compare-idx="${i}" title="${escapeHtml(i === previewCompareIndex ? tr('smart.compareCancelTip') : tr('smart.compareUseTip'))}">${smartPreviewImgHtml(s.url, 256)}</button>`).join('');
+        bindSmartPreviewImageFallbacks(thumbsEl);
         thumbsEl.querySelectorAll('[data-compare-idx]').forEach(btn => {
             btn.onclick = e => {
                 e.preventDefault(); e.stopPropagation();
@@ -8830,12 +9029,13 @@ function renderInputThumbsRow(node){
         const title = isSelf
             ? tr('smart.inputSelf')
             : (smartImageMode(node) === 'workflow' ? tr('smart.inputUpstreamWorkflow') : tr('smart.inputUpstream'));
-        const inner = isVid ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>` : `<img src="${escapeHtml(img.url)}" draggable="false">`;
+        const inner = isVid ? smartVideoPreviewHtml(img, 256, 'draggable="false" alt=""') : smartPreviewImgHtml(img, 256, 'draggable="false"');
         const label = `图${i + 1}`;
         const sourceUrl = img.originalLocalUrl || img.url || '';
         return `<div class="input-thumb ${isSelf ? 'input-self' : ''}" draggable="false" data-thumb-index="${i}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${img.imageIndex ?? ''}" data-url="${escapeHtml(img.url || '')}" data-source-url="${escapeHtml(sourceUrl)}" title="${escapeHtml(`${img.name || tr('smart.inputNum').replace('{n}', String(i + 1))} · ${title}`)}">${inner}<span class="input-thumb-label">${escapeHtml(label)}</span></div>`;
     }).join('');
     inputThumbsRow.innerHTML = `<div class="input-thumb-list">${thumbsHtml}${dedup.length > 1 ? `<span class="input-thumb-count">${escapeHtml(tr('smart.inputCount').replace('{n}', String(dedup.length)))}</span>` : ''}</div>`;
+    bindSmartPreviewImageFallbacks(inputThumbsRow);
     bindInputThumbsDrag(node, dedup);
 }
 function bindInputThumbsDrag(node, items){
@@ -9385,8 +9585,8 @@ function mentionTokenHtml(img){
     const name = img.alias || img.name || '图片';
     const kind = mediaKindForItem(img);
     const media = kind === 'video'
-        ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>`
-        : `<img src="${escapeHtml(img.url)}" alt="">`;
+        ? smartVideoPreviewHtml(img, 256, 'alt=""')
+        : smartPreviewImgHtml(img, 256, 'alt=""');
     return `<span class="mention-image-token" contenteditable="false" data-url="${escapeHtml(img.url)}" data-kind="${escapeHtml(kind)}" data-name="${escapeHtml(name)}" data-node-id="${escapeHtml(img.nodeId || '')}" data-image-index="${escapeHtml(img.imageIndex ?? '')}">${media}<span>${escapeHtml(name)}</span></span>`;
 }
 function promptHtmlWithMentionTokens(text, refs=[]){
@@ -9909,7 +10109,7 @@ function renderMentionPicker(source){
     const candidates = (mentionSource === 'asset' ? assetItems : inputItems).slice(0, 36);
     const body = candidates.length ? `<div class="mention-option-grid">${candidates.map((img, i) => `
             <button class="mention-option" type="button" data-mention-index="${i}">
-                ${mediaKindForItem(img) === 'video' ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>` : `<img src="${escapeHtml(img.url)}" alt="">`}
+                ${mediaKindForItem(img) === 'video' ? smartVideoPreviewHtml(img, 256, 'alt=""') : smartPreviewImgHtml(img, 256, 'alt=""')}
                 <span>${escapeHtml(img.alias)}</span>
             </button>
         `).join('')}</div>` : `<div class="mention-empty">${escapeHtml(tr('smart.mentionEmpty'))}</div>`;
@@ -9942,6 +10142,7 @@ function renderMentionPicker(source){
         </div>
     `;
     mentionPicker._items = candidates;
+    bindSmartPreviewImageFallbacks(mentionPicker);
     positionMentionPickerAtCaret();
     mentionPicker.classList.add('open');
     mentionPicker.querySelectorAll('[data-mention-source]').forEach(btn => {
@@ -10050,9 +10251,10 @@ function insertMentionToken(img){
     token.dataset.imageIndex = String(img.imageIndex ?? '');
     token.dataset.assetUris = JSON.stringify(img.asset_uris || {});
     token.innerHTML = token.dataset.kind === 'video'
-        ? `<video src="${escapeHtml(img.url)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video><span>${escapeHtml(token.dataset.name)}</span>`
-        : `<img src="${escapeHtml(img.url)}" alt=""><span>${escapeHtml(token.dataset.name)}</span>`;
+        ? `${smartVideoPreviewHtml(img, 256, 'alt=""')}<span>${escapeHtml(token.dataset.name)}</span>`
+        : `${smartPreviewImgHtml(img, 256, 'alt=""')}<span>${escapeHtml(token.dataset.name)}</span>`;
     range.insertNode(token);
+    bindSmartPreviewImageFallbacks(token);
     const spacer = document.createTextNode(' ');
     token.after(spacer);
     range.setStartAfter(spacer);
@@ -10342,7 +10544,7 @@ function finalizePendingNode(pendingNode, urls, meta, kind='image'){
     const imgs = urls.map((item, i) => {
         const url = typeof item === 'string' ? item : item?.url || '';
         const itemKind = (typeof item === 'object' && item.kind) || kind;
-        return {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:itemKind, generatedResult:true};
+        return copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:itemKind, generatedResult:true});
     }).filter(img => img.url);
     pendingNode.images = imgs;
     pendingNode.pending = 0;
@@ -11117,7 +11319,7 @@ async function runCascadeStepIntoNode(sourceNode, targetNode, inputRefs, ctx=sma
         const ext = result.kind === 'video' ? 'mp4' : result.kind === 'audio' ? 'mp3' : result.kind === 'text' ? 'txt' : 'png';
         const additions = result.urls.map((item, i) => {
             const url = typeof item === 'string' ? item : item?.url || '';
-            return stripImageGenerationMeta({url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true});
+            return stripImageGenerationMeta(copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true}));
         }).filter(item => item.url);
         replaceOutputsToNodeWithHistory(outputNode, additions, result.kind, null, {skipShift:Boolean(ctx?.nodeId)});
         outputNode.runPrompt = targetPromptState.runPrompt;
@@ -11206,14 +11408,14 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
                 delete history.h;
                 outputSlot.images = [];
             }
-            outputSlot.pendingTasks = taskIds.map(taskId => ({taskId, kind:'image'}));
+            outputSlot.pendingTasks = taskIds.map(taskId => ({taskId, kind:'image', providerId:taskResult.providerId, model:taskResult.model}));
             outputSlot.pending = Math.max(taskIds.length, Number(outputSlot.pending || 0) || taskIds.length);
             outputSlot.running = false;
             render();
             scheduleSave();
             await saveCanvas();
             await resumeSmartPendingNode(outputSlot);
-            if(outputSlot.jimengPending){
+            if(outputSlot.jimengPending || smartRecoverableImageTask(outputSlot)){
                 outputSlot.queued = false;
                 return [];
             }
@@ -11230,7 +11432,7 @@ async function runLoopRoundIntoSlot(loopNode, rootNode, outputSlot, loopIndex, c
             const ext = result.kind === 'video' ? 'mp4' : result.kind === 'audio' ? 'mp3' : result.kind === 'text' ? 'txt' : 'png';
             additions = result.urls.map((item, i) => {
                 const url = typeof item === 'string' ? item : item?.url || '';
-                return stripImageGenerationMeta({url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true});
+                return stripImageGenerationMeta(copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:(typeof item === 'object' && item.kind) || result.kind, generatedResult:true}));
             }).filter(item => item.url);
             replaceOutputsToNodeWithHistory(outputSlot, additions, result.kind, meta, {skipShift:Boolean(ctx?.nodeId)});
         }
@@ -11643,7 +11845,7 @@ async function runGeneration(){
         if(isApiLikeEngine(settings.engine)){
             const taskIds = Array.isArray(outImages?.taskIds) ? outImages.taskIds : [];
             if(!taskIds.length) throw new Error(tr('smart.errRunFailed'));
-            pendingNode.pendingTasks = taskIds.map(taskId => ({taskId, kind:'image'}));
+            pendingNode.pendingTasks = taskIds.map(taskId => ({taskId, kind:'image', providerId:outImages.providerId, model:outImages.model}));
             pendingNode.pending = Math.max(taskIds.length, Number(pendingNode.pending || 0) || taskIds.length);
             pendingNode.runStartedAt = nowMs();
             pendingNode.runTimerHidden = false;
@@ -11652,7 +11854,7 @@ async function runGeneration(){
             scheduleSave();
             await saveCanvas();
             await resumeSmartPendingNode(pendingNode);
-            if(pendingNode.jimengPending){
+            if(pendingNode.jimengPending || smartRecoverableImageTask(pendingNode)){
                 if(sourceVisualState) restoreSourceVisualState(node, sourceVisualState);
                 clearPromptInput({preserveDraft:true});
                 settings = previousSettings;
@@ -11766,7 +11968,7 @@ async function runApiGeneration(prompt, refs, runSettings=settings){
         if(!r.ok) throw new Error(await r.text());
         return r.json();
     })));
-    return {taskIds:tasks.map(task => task.task_id).filter(Boolean), count};
+    return {taskIds:tasks.map(task => task.task_id).filter(Boolean), count, providerId:payload.provider_id, model:payload.model};
 }
 async function runRunningHubGeneration(prompt, refs, runSettings=settings){
     const ref = selectedRunningHubRef(runSettings);
@@ -12059,6 +12261,21 @@ class JimengPendingSignal extends Error {
         this.queueInfo = data.queueInfo || data.queue_info || {};
     }
 }
+class ImageTaskRecoverSignal extends Error {
+    constructor(info){
+        const data = info || {};
+        super(data.message || '任务未丢失，可稍后手动查询结果');
+        this.imageTaskRecover = true;
+        this.taskId = data.taskId || data.task_id || '';
+        this.recoverTaskId = data.recoverTaskId || data.upstream_task_id || data.task_id || '';
+        this.providerId = data.providerId || data.provider_id || '';
+        this.kind = data.kind || 'image';
+    }
+}
+function extractUpstreamTaskId(text){
+    const match = String(text || '').match(/(?:task_id|taskId|task id)\s*[=:：]\s*([A-Za-z0-9_.:-]+)/i);
+    return match ? match[1] : '';
+}
 const activeJimengPolls = new Set();
 const JIMENG_POLL_INTERVAL = 60000;
 const JIMENG_POLL_MAX = 1440;
@@ -12104,7 +12321,7 @@ function finalizeJimengPending(node, urls, kind='image'){
     const additions = (urls || []).map((item, i) => {
         const url = typeof item === 'string' ? item : item?.url || '';
         const itemKind = (typeof item === 'object' && item.kind) || kind;
-        return stripImageGenerationMeta({url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:itemKind, generatedResult:true});
+        return stripImageGenerationMeta(copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:itemKind, generatedResult:true}));
     }).filter(item => item.url);
     if(!additions.length) return false;
     delete node.jimengPending;
@@ -12168,6 +12385,59 @@ async function queryJimengNow(nodeId){
         render();
     }
 }
+function providerIdForSmartTask(node, task){
+    return task?.providerId || node?.runSettings?.provider_id || settings.provider_id || 'comfly';
+}
+async function fetchImageTaskQuery(providerId, taskId){
+    return fetch('/api/image-task-query', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({provider_id:providerId || 'comfly', task_id:taskId})
+    }).then(async r => {
+        if(!r.ok) throw new Error(await r.text());
+        return r.json();
+    });
+}
+async function querySmartImageTaskNow(nodeId, localTaskId){
+    const node = nodes.find(n => n.id === nodeId);
+    if(!node) return;
+    const task = smartPendingTasks(node).find(item => item.taskId === localTaskId) || smartRecoverableImageTask(node);
+    if(!task || task.querying) return;
+    const recoverTaskId = task.recoverTaskId || extractUpstreamTaskId(task.error || '');
+    if(!recoverTaskId){
+        toast('没有任务 ID，无法查询');
+        return;
+    }
+    task.querying = true;
+    task.recoverTaskId = recoverTaskId;
+    render();
+    try {
+        const data = await fetchImageTaskQuery(providerIdForSmartTask(node, task), recoverTaskId);
+        if(data.status === 'succeeded'){
+            task.failed = false;
+            task.querying = false;
+            finalizeSmartPendingTask(node, task.taskId, data.images || [], task.kind || 'image');
+            render();
+            scheduleSave();
+            return;
+        }
+        if(data.status === 'failed'){
+            task.error = data.error || tr('smart.errRunFailed');
+            toast(task.error.slice(0, 160));
+        } else {
+            task.error = data.message || '任务仍在生成中，请稍后再查询';
+            toast(task.error);
+        }
+    } catch(e){
+        task.error = e.message || '查询失败';
+        toast(task.error.slice(0, 160));
+    } finally {
+        const latest = smartPendingTasks(node).find(item => item.taskId === localTaskId);
+        if(latest) latest.querying = false;
+        render();
+        scheduleSave();
+    }
+}
 function startJimengPoll(node){
     if(!node || !node.jimengPending || !node.jimengPending.submitId) return;
     const submitId = node.jimengPending.submitId;
@@ -12213,7 +12483,11 @@ async function pollSmartCanvasTask(taskId){
             });
             if(task.status === 'succeeded') return task.result || {};
             if(task.status === 'jimeng_pending') throw new JimengPendingSignal({submitId:task.submit_id, kind:task.kind, queueInfo:task.queue_info, message:task.message});
-            if(task.status === 'failed') throw new Error(task.error || tr('smart.errRunFailed'));
+            if(task.status === 'failed'){
+                const recoverTaskId = task.upstream_task_id || extractUpstreamTaskId(task.error || '');
+                if(recoverTaskId) throw new ImageTaskRecoverSignal({taskId, recoverTaskId, providerId:task.provider_id, kind:'image', message:task.error || tr('smart.errRunFailed')});
+                throw new Error(task.error || tr('smart.errRunFailed'));
+            }
         }
         throw new Error(tr('smart.errRunTimeout'));
     })();
@@ -12232,7 +12506,7 @@ function finalizeSmartPendingTask(node, taskId, images, kind='image'){
     const additions = (images || []).map((item, i) => {
         const url = typeof item === 'string' ? item : item?.url || '';
         const itemKind = (typeof item === 'object' && item.kind) || kind;
-        return stripImageGenerationMeta({url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:itemKind, generatedResult:true});
+        return stripImageGenerationMeta(copyMediaSizeFields(item, {url, name:(typeof item === 'object' && item.name) || `output-${i + 1}.${ext}`, kind:itemKind, generatedResult:true}));
     }).filter(item => item.url);
     node.images = [...(node.images || []).map(img => stripImageGenerationMeta(img)), ...additions];
     if(additions.length) node.outputKind = kind;
@@ -12257,6 +12531,7 @@ async function resumeSmartPendingNode(node){
     render();
     const failures = [];
     await Promise.all(tasks.map(async task => {
+        if(task.failed && task.recoverTaskId) return;
         try {
             const result = await pollSmartCanvasTask(task.taskId);
             finalizeSmartPendingTask(node, task.taskId, result?.images || [], task.kind || 'image');
@@ -12266,6 +12541,19 @@ async function resumeSmartPendingNode(node){
             if(e && e.jimengPending && e.submitId){
                 node.pendingTasks = smartPendingTasks(node).filter(item => item.taskId !== task.taskId);
                 setNodeJimengPending(node, e);
+                render();
+                scheduleSave();
+                return;
+            }
+            if(e && e.imageTaskRecover && e.recoverTaskId){
+                task.failed = true;
+                task.querying = false;
+                task.recoverTaskId = e.recoverTaskId;
+                task.providerId = e.providerId || task.providerId || providerIdForSmartTask(node, task);
+                task.error = e.message || tr('smart.errRunFailed');
+                node.running = false;
+                node.pending = Math.max(1, smartPendingTasks(node).length);
+                toast('任务未丢失，可稍后手动查询结果');
                 render();
                 scheduleSave();
                 return;

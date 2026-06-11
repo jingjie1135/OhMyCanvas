@@ -29,7 +29,7 @@ import xml.etree.ElementTree as ET
 from typing import List, Dict, Any, Optional, Tuple
 from threading import Lock, Thread
 import httpx
-from PIL import Image
+from PIL import Image, ImageOps
 from io import BytesIO
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, Header, Request
 from fastapi.exceptions import RequestValidationError
@@ -222,6 +222,7 @@ API_ENV_FILE = os.path.join(BASE_DIR, "API", ".env")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 CONVERSATION_DIR = os.path.join(DATA_DIR, "conversations")
 CANVAS_DIR = os.path.join(DATA_DIR, "canvases")
+MEDIA_PREVIEW_DIR = os.path.join(DATA_DIR, "media_previews")
 ASSET_LIBRARY_PATH = os.path.join(DATA_DIR, "asset_library.json")
 PROMPT_LIBRARY_PATH = os.path.join(DATA_DIR, "prompt_libraries.json")
 API_PROVIDERS_FILE = os.path.join(DATA_DIR, "api_providers.json")
@@ -2309,6 +2310,10 @@ class OnlineImageRequest(BaseModel):
     n: int = 1
     reference_images: List[AIReference] = []
 
+class ImageTaskQueryRequest(BaseModel):
+    provider_id: str = "comfly"
+    task_id: str = Field(min_length=1, max_length=240)
+
 CANVAS_TASKS: Dict[str, Dict[str, Any]] = {}
 CANVAS_TASK_LOCK = Lock()
 
@@ -3348,6 +3353,54 @@ def text_delta_from_chat_chunk(data):
 def sse_event(data):
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
+IMAGE_OUTPUT_KEY_HINTS = (
+    "url", "image_url", "imageUrl", "image", "output_url", "outputUrl",
+    "result_url", "resultUrl", "download_url", "downloadUrl", "asset_url", "assetUrl",
+)
+IMAGE_CONTAINER_KEY_HINTS = (
+    "images", "image", "output", "outputs", "result", "results", "data", "items", "files",
+)
+IMAGE_BASE64_KEY_HINTS = ("b64_json", "base64", "image_base64", "imageBase64")
+
+def looks_like_generated_image_url(value):
+    text = str(value or "").strip()
+    if not text:
+        return False
+    if text.startswith("data:image/"):
+        return True
+    clean = text.split("?", 1)[0].split("#", 1)[0].lower()
+    return text.startswith(("http://", "https://", "/output/", "/assets/")) and re.search(r"\.(png|jpe?g|webp|gif|bmp|tiff?)$", clean)
+
+def extract_image_flexible(value, depth=0):
+    if depth > 8 or value is None:
+        return None
+    if isinstance(value, str):
+        return {"type": "url", "value": value} if looks_like_generated_image_url(value) else None
+    if isinstance(value, list):
+        for item in value:
+            found = extract_image_flexible(item, depth + 1)
+            if found:
+                return found
+        return None
+    if not isinstance(value, dict):
+        return None
+    for key in IMAGE_BASE64_KEY_HINTS:
+        item = value.get(key)
+        if isinstance(item, str) and item.strip():
+            return {"type": "b64", "value": item.strip(), "mime_type": value.get("mime_type") or value.get("mimeType") or "image/png"}
+    for key in IMAGE_OUTPUT_KEY_HINTS:
+        item = value.get(key)
+        if isinstance(item, str) and looks_like_generated_image_url(item):
+            return {"type": "url", "value": item}
+        found = extract_image_flexible(item, depth + 1)
+        if found:
+            return found
+    for key in IMAGE_CONTAINER_KEY_HINTS:
+        found = extract_image_flexible(value.get(key), depth + 1)
+        if found:
+            return found
+    return None
+
 def extract_image(data):
     candidates = data.get("candidates") if isinstance(data, dict) else None
     if isinstance(candidates, list):
@@ -3382,6 +3435,9 @@ def extract_image(data):
                 return {"type": "url", "value": url[0]}
             if isinstance(url, str) and url:
                 return {"type": "url", "value": url}
+    flexible = extract_image_flexible(data)
+    if flexible:
+        return flexible
     if isinstance(data.get("data"), dict) and isinstance(data["data"].get("data"), dict):
         data = data["data"]["data"]
     images = data.get("data") or []
@@ -3392,6 +3448,9 @@ def extract_image(data):
         return {"type": "url", "value": first["url"]}
     if first.get("b64_json"):
         return {"type": "b64", "value": first["b64_json"]}
+    flexible = extract_image_flexible(first)
+    if flexible:
+        return flexible
     raise HTTPException(status_code=502, detail="无法识别生图接口返回格式")
 
 def extract_task_id(data):
@@ -3407,6 +3466,11 @@ def extract_task_id(data):
     if isinstance(nested, dict):
         return extract_task_id(nested)
     return None
+
+def extract_task_id_from_text(text):
+    value = str(text or "")
+    match = re.search(r"(?:task_id|taskId|task id)\s*[=:：]\s*([A-Za-z0-9_.:-]+)", value, re.IGNORECASE)
+    return match.group(1) if match else ""
 
 def images_api_unsupported(response):
     text = str(getattr(response, "text", "") or "").lower()
@@ -4257,13 +4321,38 @@ async def generate_jimeng_video(payload: CanvasVideoRequest, provider):
             except Exception:
                 pass
 
-async def wait_for_image_task(client, task_id, provider=None):
+IMAGE_TASK_SUCCESS_STATUSES = {"SUCCESS", "SUCCESSFUL", "SUCCEED", "SUCCEEDED", "COMPLETED", "COMPLETE", "DONE", "FINISHED", "OK", "READY"}
+IMAGE_TASK_FAILED_STATUSES = {"FAILURE", "FAILED", "FAIL", "ERROR", "ERRORED", "CANCELED", "CANCELLED", "TIMEOUT", "REJECTED", "EXPIRED"}
+
+def image_task_url_for_provider(provider, task_id):
     base_url = (provider.get("base_url") if provider else AI_BASE_URL).rstrip("/")
     is_apimart = is_apimart_provider(provider)
     if is_apimart:
-        task_url = f"{base_url}/tasks/{task_id}" if base_url.endswith("/v1") else f"{base_url}/v1/tasks/{task_id}"
-    else:
-        task_url = f"{base_url}/images/tasks/{task_id}" if base_url.endswith("/v1") else f"{base_url}/v1/images/tasks/{task_id}"
+        return f"{base_url}/tasks/{task_id}" if base_url.endswith("/v1") else f"{base_url}/v1/tasks/{task_id}"
+    return f"{base_url}/images/tasks/{task_id}" if base_url.endswith("/v1") else f"{base_url}/v1/images/tasks/{task_id}"
+
+def image_task_data(payload):
+    if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+        return payload["data"]
+    return payload if isinstance(payload, dict) else {}
+
+def image_task_status(payload):
+    task_data = image_task_data(payload)
+    return str(task_data.get("status") or task_data.get("task_status") or "").upper()
+
+def image_task_fail_reason(payload):
+    task_data = image_task_data(payload)
+    error = task_data.get("error") if isinstance(task_data.get("error"), dict) else {}
+    return task_data.get("fail_reason") or task_data.get("message") or error.get("message") or (payload.get("message") if isinstance(payload, dict) else "") or "生图任务失败"
+
+async def fetch_image_task_payload(client, task_id, provider=None):
+    task_url = image_task_url_for_provider(provider, task_id)
+    response = await client.get(task_url, headers=api_headers(provider=provider))
+    response.raise_for_status()
+    return response.json()
+
+async def wait_for_image_task(client, task_id, provider=None):
+    is_apimart = is_apimart_provider(provider)
     timeout = APIMART_IMAGE_TASK_TIMEOUT if is_apimart else IMAGE_TASK_TIMEOUT
     interval = APIMART_IMAGE_POLL_INTERVAL if is_apimart else IMAGE_POLL_INTERVAL
     initial_delay = APIMART_IMAGE_INITIAL_POLL_DELAY if is_apimart else 0
@@ -4275,19 +4364,22 @@ async def wait_for_image_task(client, task_id, provider=None):
             initial_delay = 0
             if time.monotonic() >= deadline:
                 break
-        response = await client.get(task_url, headers=api_headers(provider=provider))
-        response.raise_for_status()
-        last_payload = response.json()
-        task_data = last_payload.get("data") if isinstance(last_payload.get("data"), dict) else last_payload
-        status = str(task_data.get("status") or task_data.get("task_status") or "").upper()
-        if status in {"SUCCESS", "SUCCEED", "SUCCEEDED", "COMPLETED", "COMPLETE", "DONE", "FINISHED", "OK", "READY"}:
+        last_payload = await fetch_image_task_payload(client, task_id, provider)
+        status = image_task_status(last_payload)
+        if not status:
+            try:
+                if extract_image(last_payload):
+                    return last_payload
+            except HTTPException:
+                pass
+        if status in IMAGE_TASK_SUCCESS_STATUSES:
             return last_payload
-        if status in {"FAILURE", "FAILED", "FAIL", "ERROR", "ERRORED", "CANCELED", "CANCELLED", "TIMEOUT", "REJECTED", "EXPIRED"}:
-            error = task_data.get("error") if isinstance(task_data.get("error"), dict) else {}
-            reason = task_data.get("fail_reason") or task_data.get("message") or error.get("message") or last_payload.get("message") or "生图任务失败"
-            raise HTTPException(status_code=502, detail=f"生图任务失败：{reason}")
+        if status in IMAGE_TASK_FAILED_STATUSES:
+            raise HTTPException(status_code=502, detail=f"生图任务失败：{image_task_fail_reason(last_payload)}")
         await asyncio.sleep(min(interval, max(0.0, deadline - time.monotonic())))
-    raise HTTPException(status_code=504, detail=f"生图任务超时（已等待 {int(timeout)} 秒），task_id={task_id}")
+    raw_text = json.dumps(last_payload, ensure_ascii=False)[:800] if last_payload else ""
+    extra = f"，最后响应：{raw_text}" if raw_text else ""
+    raise HTTPException(status_code=504, detail=f"生图任务超时（已等待 {int(timeout)} 秒），task_id={task_id}{extra}")
 
 def output_storage(category="output"):
     return (OUTPUT_INPUT_DIR, "input") if category == "input" else (OUTPUT_OUTPUT_DIR, "output")
@@ -4320,6 +4412,87 @@ def output_file_from_url(url):
     if os.path.commonpath([output_root, path]) != output_root or not os.path.exists(path):
         return None
     return path
+
+def image_has_alpha(img: Image.Image) -> bool:
+    if img.mode in ("RGBA", "LA"):
+        return True
+    if img.mode == "P":
+        return "transparency" in img.info
+    return False
+
+def media_preview_cache_paths(path: str, width: int):
+    stat = os.stat(path)
+    key = hashlib.sha1(
+        f"{os.path.abspath(path)}|{stat.st_mtime_ns}|{stat.st_size}|{width}".encode("utf-8", "ignore")
+    ).hexdigest()
+    return (
+        os.path.join(MEDIA_PREVIEW_DIR, f"{key}.webp"),
+        os.path.join(MEDIA_PREVIEW_DIR, f"{key}.png"),
+    )
+
+def is_video_preview_file(path: str) -> bool:
+    return os.path.splitext(str(path or "").split("?", 1)[0])[1].lower() in {".mp4", ".webm", ".mov", ".m4v"}
+
+def generate_video_preview_image(path: str, width: int) -> Image.Image:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("未找到 ffmpeg，无法生成视频预览图")
+    fd, frame_path = tempfile.mkstemp(prefix="media_preview_frame_", suffix=".jpg")
+    os.close(fd)
+    try:
+        cmd = [
+            ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+            "-ss", "0.5",
+            "-i", path,
+            "-frames:v", "1",
+            "-vf", f"scale='min({width},iw)':-2",
+            frame_path,
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if proc.returncode != 0 or not os.path.exists(frame_path) or os.path.getsize(frame_path) <= 0:
+            raise RuntimeError((proc.stderr or "ffmpeg 未能抽取视频首帧").strip()[:300])
+        with Image.open(frame_path) as frame:
+            img = ImageOps.exif_transpose(frame).copy()
+            img.thumbnail((width, width), Image.LANCZOS)
+            return img.convert("RGB")
+    finally:
+        try:
+            os.remove(frame_path)
+        except OSError:
+            pass
+
+@app.get("/api/media-preview")
+async def media_preview(url: str, w: int = 512):
+    path = output_file_from_url(url)
+    if not path or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="媒体文件不存在")
+
+    width = max(64, min(2048, int(w or 512)))
+    webp_path, png_path = media_preview_cache_paths(path, width)
+
+    if os.path.exists(webp_path):
+        return FileResponse(webp_path, media_type="image/webp")
+    if os.path.exists(png_path):
+        return FileResponse(png_path, media_type="image/png")
+
+    try:
+        os.makedirs(MEDIA_PREVIEW_DIR, exist_ok=True)
+        if is_video_preview_file(path):
+            img = await asyncio.to_thread(generate_video_preview_image, path, width)
+        else:
+            with Image.open(path) as source:
+                img = ImageOps.exif_transpose(source)
+                img.thumbnail((width, width), Image.LANCZOS)
+                img = img.convert("RGBA" if image_has_alpha(img) else "RGB")
+
+        try:
+            img.save(webp_path, format="WEBP", quality=82, method=4)
+            return FileResponse(webp_path, media_type="image/webp")
+        except Exception:
+            img.save(png_path, format="PNG", optimize=True)
+            return FileResponse(png_path, media_type="image/png")
+    except Exception as exc:
+        raise HTTPException(status_code=415, detail=f"无法生成预览图：{exc}") from exc
 
 def local_media_file_by_basename(name: str):
     safe = os.path.basename(urllib.parse.unquote(str(name or "")))
@@ -7363,8 +7536,12 @@ async def generate_ai_image(prompt, size, quality, model, reference_images=None,
             task_id = extract_task_id(raw)
             if not task_id:
                 raise
-        task_result = await wait_for_image_task(client, task_id, provider)
-        return extract_image(task_result), task_result
+        try:
+            task_result = await wait_for_image_task(client, task_id, provider)
+            return extract_image(task_result), task_result
+        except HTTPException as exc:
+            setattr(exc, "upstream_task_id", task_id)
+            raise
 
 def upstream_message_from_record(item):
     role = item.get("role")
@@ -9180,6 +9357,66 @@ async def build_online_image_result(payload: OnlineImageRequest):
 async def online_image(payload: OnlineImageRequest):
     return await build_online_image_result(payload)
 
+@app.post("/api/image-task-query")
+async def query_image_task(payload: ImageTaskQueryRequest):
+    provider = get_api_provider(payload.provider_id)
+    task_id = str(payload.task_id or "").strip()
+    timeout = httpx.Timeout(connect=20.0, read=300.0, write=60.0, pool=20.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            raw = await fetch_image_task_payload(client, task_id, provider)
+    except httpx.HTTPStatusError as exc:
+        log_net_error(f"查询生图任务 HTTP状态错误 provider={provider.get('id')} task_id={task_id}", exc)
+        text = exc.response.text or ""
+        raise HTTPException(status_code=exc.response.status_code, detail=f"查询上游生图任务失败：{text[:300]}") from exc
+    except httpx.HTTPError as exc:
+        log_net_error(f"查询生图任务 网络/TLS错误 provider={provider.get('id')} task_id={task_id}", exc)
+        raise HTTPException(status_code=502, detail=f"查询上游生图任务失败：{exc}") from exc
+
+    status = image_task_status(raw)
+    image_data = None
+    try:
+        image_data = extract_image(raw)
+    except HTTPException:
+        image_data = None
+    if image_data:
+        local_url = await save_ai_image_to_output(image_data, prefix="online_")
+        result = {
+            "status": "succeeded",
+            "prompt": "",
+            "images": [local_url],
+            "timestamp": time.time(),
+            "type": "online",
+            "model": "",
+            "provider_id": provider["id"],
+            "provider_name": provider.get("name") or provider["id"],
+            "task_id": task_id,
+            "request_id": raw.get("id") if isinstance(raw, dict) else "",
+            "params": {"provider_id": provider["id"]},
+            "raw": raw,
+        }
+        save_to_history(result)
+        if GLOBAL_LOOP:
+            asyncio.run_coroutine_threadsafe(manager.broadcast_new_image(result), GLOBAL_LOOP)
+        return result
+    if status in IMAGE_TASK_FAILED_STATUSES:
+        return {
+            "status": "failed",
+            "task_id": task_id,
+            "provider_id": provider["id"],
+            "provider_name": provider.get("name") or provider["id"],
+            "error": image_task_fail_reason(raw),
+            "raw": raw,
+        }
+    return {
+        "status": "running",
+        "task_id": task_id,
+        "provider_id": provider["id"],
+        "provider_name": provider.get("name") or provider["id"],
+        "message": "任务仍在生成中",
+        "raw": raw,
+    }
+
 async def run_canvas_image_task(task_id: str, payload: OnlineImageRequest):
     with CANVAS_TASK_LOCK:
         if task_id in CANVAS_TASKS:
@@ -9211,11 +9448,13 @@ async def run_canvas_image_task(task_id: str, payload: OnlineImageRequest):
     except Exception as exc:
         detail = getattr(exc, "detail", None) or str(exc)
         status_code = getattr(exc, "status_code", 500)
+        upstream_task_id = getattr(exc, "upstream_task_id", "") or extract_task_id_from_text(detail)
         with CANVAS_TASK_LOCK:
             CANVAS_TASKS[task_id].update({
                 "status": "failed",
                 "error": str(detail),
                 "status_code": status_code,
+                "upstream_task_id": upstream_task_id,
                 "updated_at": time.time(),
             })
 
@@ -9231,6 +9470,8 @@ async def create_canvas_image_task(payload: OnlineImageRequest):
             "updated_at": time.time(),
             "result": None,
             "error": "",
+            "provider_id": payload.provider_id,
+            "model": payload.model,
         }
     asyncio.create_task(run_canvas_image_task(task_id, payload))
     return {"task_id": task_id, "status": "queued"}

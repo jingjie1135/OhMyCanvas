@@ -10,6 +10,67 @@ function actionFailed(labelKey, detail=''){
     return langIsEn() ? `${label} failed${detail ? `: ${detail}` : ''}` : `${label}失败${detail ? `：${detail}` : ''}`;
 }
 function noReturnedImage(labelKey){ return langIsEn() ? `${tr(labelKey)} failed: no image returned` : `${tr(labelKey)}失败：未返回图片`; }
+function canvasMediaPreviewUrl(url, size=512){
+    const raw = String(url || '');
+    if(!raw || raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
+    if(!raw.startsWith('/output/') && !raw.startsWith('/assets/')) return raw;
+    if(!/\.(png|jpe?g|webp|gif|bmp|avif|tiff?|mp4|webm|mov|m4v)(\?|#|$)/i.test(raw)) return raw;
+    const width = Math.max(64, Math.min(2048, Math.round(Number(size) || 512)));
+    return `/api/media-preview?w=${width}&url=${encodeURIComponent(raw)}`;
+}
+function canvasPreviewImgHtml(url, size=512, attrs=''){
+    const original = String(url || '');
+    const preview = canvasMediaPreviewUrl(original, size);
+    return `<img src="${escapeAttr(preview)}" data-preview-src="${escapeAttr(preview)}" data-original-src="${escapeAttr(original)}" data-url="${escapeAttr(original)}"${attrs ? ` ${attrs}` : ''}>`;
+}
+function canvasVideoPreviewHtml(url, size=512, attrs=''){
+    const original = String(url || '');
+    const preview = canvasMediaPreviewUrl(original, size);
+    return `<img src="${escapeAttr(preview)}" data-preview-src="${escapeAttr(preview)}" data-original-src="${escapeAttr(original)}" data-url="${escapeAttr(original)}" data-preview-kind="video"${attrs ? ` ${attrs}` : ''}>`;
+}
+function canvasVideoFallbackHtml(url, attrs=''){
+    const safe = escapeAttr(url || '');
+    return `<video src="${safe}" data-url="${safe}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"${attrs ? ` ${attrs}` : ''}></video>`;
+}
+function canvasVideoPlayerHtml(url, attrs=''){
+    const safe = escapeAttr(url || '');
+    return `<video src="${safe}" data-url="${safe}" controls autoplay playsinline preload="metadata" disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"${attrs ? ` ${attrs}` : ''}></video>`;
+}
+function canvasActivateVideoPreview(img){
+    if(!img || img.dataset?.previewKind !== 'video') return false;
+    const original = img.dataset.originalSrc || img.dataset.url || img.getAttribute('src') || '';
+    if(!original) return false;
+    const tpl = document.createElement('template');
+    tpl.innerHTML = canvasVideoPlayerHtml(original, img.dataset.videoPlayerAttrs || '');
+    const video = tpl.content.firstElementChild;
+    if(!video) return false;
+    img.replaceWith(video);
+    video.parentElement?.querySelector?.('.canvas-video-play')?.style?.setProperty('display', 'none');
+    video.play?.().catch(() => {});
+    return true;
+}
+function isCanvasPreviewImage(img){
+    return img?.tagName?.toLowerCase?.() === 'img'
+        && img.dataset?.previewSrc
+        && img.dataset?.originalSrc
+        && img.dataset.previewSrc !== img.dataset.originalSrc
+        && img.getAttribute('src') !== img.dataset.originalSrc;
+}
+function bindCanvasPreviewImageFallbacks(root=document){
+    root.querySelectorAll?.('img[data-preview-src][data-original-src]:not([data-preview-fallback-bound])').forEach(img => {
+        img.dataset.previewFallbackBound = '1';
+        img.addEventListener('error', () => {
+            const original = img.dataset.originalSrc || img.dataset.url || '';
+            if(img.dataset.previewKind === 'video'){
+                const video = document.createElement('template');
+                video.innerHTML = canvasVideoFallbackHtml(original, img.dataset.videoFallbackAttrs || '');
+                img.replaceWith(video.content.firstElementChild);
+                return;
+            }
+            if(original && img.getAttribute('src') !== original) img.src = original;
+        });
+    });
+}
 function applyLanguage(lang){
     if(lang && window.StudioI18n) StudioI18n.set(lang);
     document.title = tr('canvas.title');
@@ -5145,6 +5206,7 @@ function render(){
     refreshGeometry();
     refreshGeometryAfterLayout();
     refreshIcons();
+    bindCanvasPreviewImageFallbacks(nodesEl);
     refreshOutputTimer();
 }
 function refreshNodes(ids=[]){
@@ -5169,6 +5231,7 @@ function refreshNodes(ids=[]){
     refreshGeometry();
     refreshGeometryAfterLayout();
     refreshIcons();
+    bindCanvasPreviewImageFallbacks(nodesEl);
     refreshOutputTimer();
 }
 function refreshRunNodes(node, out=null){
@@ -5190,6 +5253,7 @@ function pendingPreviewSizeFromNode(node){
     if(natural) return natural;
     if(node.type === 'image'){
         const img = nodesEl?.querySelector?.(`.image-node[data-id="${CSS.escape(node.id)}"] img`);
+        if(isCanvasPreviewImage(img)) return null;
         const domSize = normalizedPendingPreviewSize({w:img?.naturalWidth, h:img?.naturalHeight});
         if(domSize) return domSize;
     }
@@ -5213,6 +5277,7 @@ function pendingPreviewSizeFromRefs(refs=[]){
         const nodeSize = pendingPreviewSizeFromNode(node);
         if(nodeSize) return nodeSize;
         const media = nodesEl?.querySelector?.(`[data-url="${CSS.escape(url)}"], [data-output-url="${CSS.escape(url)}"] img, img[src="${CSS.escape(url)}"]`);
+        if(isCanvasPreviewImage(media)) continue;
         const domSize = normalizedPendingPreviewSize({w:media?.naturalWidth || media?.videoWidth, h:media?.naturalHeight || media?.videoHeight});
         if(domSize) return domSize;
     }
@@ -5232,6 +5297,22 @@ function pendingOutputStyle(pending){
     return ` style="aspect-ratio:${Math.max(1, size.w)}/${Math.max(1, size.h)}"`;
 }
 function renderPendingOutput(pending){
+    if(pending?.failed){
+        const taskId = pending.recoverTaskId || '';
+        const querying = Boolean(pending.querying);
+        const msg = pending.error || tr('canvas.generationFailed');
+        const sub = taskId ? `任务 ID：${escapeHtml(taskId)}` : '没有任务 ID，无法查询';
+        return `<div class="output-img-wrap loading-wrap recoverable" data-pending-id="${escapeAttr(pending.id)}"${pendingOutputStyle(pending)}>
+            <span class="output-time-pill failed">失败</span>
+            <div class="output-recover-state">
+                <i data-lucide="refresh-cw" class="${querying ? 'spinning' : ''}"></i>
+                <div class="output-recover-title">${querying ? '查询中' : '任务未丢失'}</div>
+                <div class="output-recover-sub" title="${escapeAttr(msg)}">${sub}</div>
+                <button class="output-recover-query" type="button" ${taskId && !querying ? '' : 'disabled'}>${querying ? '查询中...' : '查询结果'}</button>
+            </div>
+            <button class="output-del" title="${tr('common.delete')}">×</button>
+        </div>`;
+    }
     return `<div class="output-img-wrap loading-wrap" data-pending-id="${escapeAttr(pending.id)}"${pendingOutputStyle(pending)}><span class="output-time-pill running">${formatRunDuration(nowMs() - Number(pending.startedAt || nowMs()))}</span><div class="output-spinner"></div><button class="output-del" title="${tr('common.delete')}">×</button></div>`;
 }
 function captureOutputScrolls(){
@@ -5322,15 +5403,16 @@ function renderNode(node){
             const missing = isMissingAssetUrl(node.url);
             const mediaKind = mediaKindForNode(node);
             const isEditableImage = mediaKind === 'image' && !missing;
-            body.innerHTML = `<div class="image-preview-wrap">${missing ? missingAssetHtml(node.url) : `<img src="${escapeAttr(node.url)}" draggable="false">`}</div><div class="image-caption text-[11px] text-gray-400 truncate">${escapeHtml(node.name || 'image')}${missing ? ` · ${langIsEn() ? 'missing' : '文件缺失'}` : ''}</div>`;
+            body.innerHTML = `<div class="image-preview-wrap">${missing ? missingAssetHtml(node.url) : canvasPreviewImgHtml(node.url, 768, 'draggable="false"')}</div><div class="image-caption text-[11px] text-gray-400 truncate">${escapeHtml(node.name || 'image')}${missing ? ` · ${langIsEn() ? 'missing' : '文件缺失'}` : ''}</div>`;
             if(!missing && mediaKind !== 'image'){
                 const mediaHtml = mediaKind === 'video'
-                    ? `<div class="media-card video-card"><video src="${escapeAttr(node.url)}" data-url="${escapeAttr(node.url)}" controls preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video></div>`
+                    ? `<div class="media-card video-card">${canvasVideoPreviewHtml(node.url, 768, 'draggable="false" data-video-fallback-attrs="controls"')}<button class="canvas-video-play" type="button" title="播放"><i data-lucide="play"></i></button></div>`
                     : `<div class="media-card audio-card"><i data-lucide="file-audio" class="w-8 h-8"></i><div class="audio-title">${escapeHtml(node.name || 'Audio')}</div><div class="audio-sub">AUDIO</div><audio src="${escapeAttr(node.url)}" data-url="${escapeAttr(node.url)}" controls preload="metadata"></audio></div>`;
                 body.innerHTML = `<div class="image-preview-wrap">${mediaHtml}</div><div class="image-caption text-[11px] text-gray-400 truncate">${escapeHtml(node.name || nodeTitleForMedia(node))}</div>`;
             }
             const previewWrap = body.querySelector('.image-preview-wrap');
             const loadedImg = body.querySelector('img');
+            const videoPlayBtn = body.querySelector('.canvas-video-play');
             const openPreview = e => {
                 if(!node.url || missing) return;
                 e.preventDefault();
@@ -5362,6 +5444,33 @@ function renderNode(node){
                     if(e.detail >= 2) openPreview(e);
                 }, true);
                 loadedImg.addEventListener('dblclick', openPreview, true);
+            }
+            if(loadedImg && mediaKind === 'video'){
+                loadedImg.addEventListener('mousedown', e => {
+                    if(e.button !== 0) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                }, true);
+                loadedImg.addEventListener('click', e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    canvasActivateVideoPreview(loadedImg);
+                }, true);
+            }
+            if(videoPlayBtn && loadedImg && mediaKind === 'video'){
+                videoPlayBtn.addEventListener('mousedown', e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                }, true);
+                videoPlayBtn.addEventListener('click', e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    canvasActivateVideoPreview(loadedImg);
+                }, true);
             }
             body.addEventListener('dblclick', openPreview, true);
             if(loadedImg && loadedImg.complete && loadedImg.naturalHeight > 0){
@@ -5487,7 +5596,9 @@ function bindOutputWrap(wrap, node){
     const video = wrap.querySelector('video');
     const audio = wrap.querySelector('audio');
     const fileCard = wrap.querySelector('.output-file-card');
+    const playBtn = wrap.querySelector('.canvas-video-play');
     const del = wrap.querySelector('.output-del');
+    const recoverQuery = wrap.querySelector('.output-recover-query');
     if(img){
         img.draggable = true;
         img.ondragstart = e => {
@@ -5502,6 +5613,7 @@ function bindOutputWrap(wrap, node){
         img.onclick = e => {
             e.stopPropagation();
             if(img.dataset.dragging) return;
+            if(img.dataset.previewKind === 'video' && canvasActivateVideoPreview(img)) return;
             openOutputLightbox(img.dataset.url, node);
         };
     }
@@ -5532,6 +5644,26 @@ function bindOutputWrap(wrap, node){
                 scheduleSave();
             }
             refreshNodes([node.id]);
+        };
+    }
+    if(playBtn && img){
+        playBtn.onmousedown = e => {
+            e.preventDefault();
+            e.stopPropagation();
+        };
+        playBtn.onclick = e => {
+            e.preventDefault();
+            e.stopPropagation();
+            canvasActivateVideoPreview(img);
+        };
+    }
+    if(recoverQuery){
+        recoverQuery.onmousedown = e => e.stopPropagation();
+        recoverQuery.onclick = e => {
+            e.preventDefault();
+            e.stopPropagation();
+            const pid = wrap.dataset.pendingId;
+            if(pid) queryRecoverPendingOutput(pid);
         };
     }
 }
@@ -5573,7 +5705,19 @@ function refreshOutputNodeContent(node){
             grid.insertAdjacentHTML('beforeend', item.html);
             child = grid.lastElementChild;
             child.dataset.outputKey = item.key;
+            child.dataset.outputHtml = item.html;
             bindOutputWrap(child, node);
+        } else if(item.key.startsWith('pending:') && child.dataset.outputHtml !== item.html){
+            const tpl = document.createElement('template');
+            tpl.innerHTML = item.html.trim();
+            const fresh = tpl.content.firstElementChild;
+            if(fresh){
+                fresh.dataset.outputKey = item.key;
+                fresh.dataset.outputHtml = item.html;
+                child.replaceWith(fresh);
+                child = fresh;
+                bindOutputWrap(child, node);
+            }
         }
         grid.appendChild(child);
     });
@@ -5889,9 +6033,9 @@ function canvasAssetItemKind(item){
 function canvasAssetThumbHtml(item){
     const kind = canvasAssetItemKind(item);
     const url = escapeAttr(item?.url || '');
-    const thumb = escapeAttr(item?.thumbnail || item?.url || '');
+    const thumbUrl = item?.thumbnail || item?.url || '';
     if(kind === 'video'){
-        return `<div class="canvas-asset-thumb-wrap"><video class="canvas-asset-thumb" src="${url}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video><div class="canvas-asset-video-badge"><i data-lucide="play"></i><span>VIDEO</span></div></div>`;
+        return `<div class="canvas-asset-thumb-wrap">${canvasVideoPreviewHtml(item?.url || '', 512, 'class="canvas-asset-thumb" alt=""')}<div class="canvas-asset-video-badge"><i data-lucide="play"></i><span>VIDEO</span></div></div>`;
     }
     if(kind === 'audio'){
         return `<div class="canvas-asset-thumb-wrap canvas-asset-file-thumb"><i data-lucide="file-audio" class="w-6 h-6"></i><span>${escapeHtml(item?.name || 'audio')}</span></div>`;
@@ -5899,7 +6043,7 @@ function canvasAssetThumbHtml(item){
     if(kind === 'workflow'){
         return `<div class="canvas-asset-thumb-wrap canvas-asset-file-thumb workflow-thumb"><i data-lucide="workflow" class="w-6 h-6"></i><span>${escapeHtml(item?.name || 'workflow')}</span></div>`;
     }
-    return `<div class="canvas-asset-thumb-wrap"><img class="canvas-asset-thumb" src="${thumb}" alt=""></div>`;
+    return `<div class="canvas-asset-thumb-wrap">${canvasPreviewImgHtml(thumbUrl, 512, 'class="canvas-asset-thumb" alt=""')}</div>`;
 }
 function positionCanvasAssetHoverPreview(event){
     if(!canvasAssetHoverPreview || canvasAssetHoverPreview.hidden || canvasAssetHoverPreview.style.display === 'none') return;
@@ -5921,16 +6065,20 @@ function showCanvasAssetHoverPreview(event, item){
     const isVideo = canvasAssetItemKind(item) === 'video';
     const name = canvasAssetHoverPreview.querySelector('.canvas-asset-hover-name');
     if(img){
-        img.style.display = isVideo ? 'none' : 'block';
-        if(isVideo) img.removeAttribute('src');
-        else img.src = item.thumbnail || item.url || '';
+        img.style.display = 'block';
+        img.src = canvasMediaPreviewUrl(isVideo ? item.url : (item.thumbnail || item.url || ''), 768);
+        img.dataset.previewSrc = img.src || '';
+        img.dataset.originalSrc = item.url || item.thumbnail || '';
+        img.dataset.url = item.url || item.thumbnail || '';
+        img.dataset.previewKind = isVideo ? 'video' : '';
+        img.dataset.videoFallbackAttrs = '';
         img.alt = item.name || 'asset preview';
     }
     if(video){
-        video.style.display = isVideo ? 'block' : 'none';
-        if(isVideo) video.src = item.url || item.thumbnail || '';
-        else video.removeAttribute('src');
+        video.style.display = 'none';
+        video.removeAttribute('src');
     }
+    bindCanvasPreviewImageFallbacks(canvasAssetHoverPreview);
     if(name) name.textContent = item.name || 'asset';
     canvasAssetHoverPreview.hidden = false;
     canvasAssetHoverPreview.style.display = 'block';
@@ -6030,6 +6178,7 @@ function renderCanvasAssetLibrary(){
             </div>
         </div>
     `).join('') : `<div class="canvas-asset-empty">${escapeHtml(localMode ? '暂无本地素材，请在素材库管理中上传' : '当前分组还没有资产')}</div>`;
+    bindCanvasPreviewImageFallbacks(canvasAssetGrid);
     canvasAssetGrid.querySelectorAll('.canvas-asset-item').forEach(card => {
         card.addEventListener('dragstart', event => {
             event.dataTransfer.effectAllowed = 'copy';
@@ -6154,7 +6303,7 @@ function renderImageAssetManager(){
             <div class="asset-manager-grid">
                 ${items.length ? items.map(item => `<div class="asset-manager-card">
                     <input type="checkbox" data-manager-asset-check="${escapeAttr(item.id)}" ${managerSelectedAssetIds.has(item.id) ? 'checked' : ''}>
-                    <img src="${escapeAttr(item.thumbnail || item.url || '')}" alt="">
+                    ${canvasPreviewImgHtml(item.thumbnail || item.url || '', 512, 'alt=""')}
                     <span class="asset-manager-card-name" title="${escapeAttr(item.name || '')}">${escapeHtml(item.name || 'asset')}</span>
                     <div class="asset-manager-card-actions">
                         <button type="button" data-manager-asset-rename="${escapeAttr(item.id)}"><i data-lucide="pencil" class="w-3.5 h-3.5"></i><span>重命名</span></button>
@@ -6164,6 +6313,7 @@ function renderImageAssetManager(){
             </div>
         </div>
     `;
+    bindCanvasPreviewImageFallbacks(assetManagerBody);
     const upload = document.getElementById('managerAssetUpload');
     upload?.addEventListener('change', async () => {
         if(!upload.files?.length || !cat) return;
@@ -7791,7 +7941,7 @@ function renderImageInputList(list, node, imageInputs, emptyText=null){
         item.className = 'input-item';
         item.draggable = true;
         item.dataset.sourceId = src.id;
-        const previewHtml = src.preview && !isMissingAssetUrl(src.preview) ? `<img src="${escapeAttr(src.preview)}">` : (src.preview ? missingAssetHtml(src.preview, true) : '<i data-lucide="image" class="w-6 h-6 text-slate-400"></i>');
+        const previewHtml = src.preview && !isMissingAssetUrl(src.preview) ? canvasPreviewImgHtml(src.preview, 256) : (src.preview ? missingAssetHtml(src.preview, true) : '<i data-lucide="image" class="w-6 h-6 text-slate-400"></i>');
         item.innerHTML = `<span class="input-index">${i + 1}</span>${previewHtml}<span class="input-label">${escapeHtml(src.label)}</span>`;
         item.ondragstart = e => {
             e.stopPropagation();
@@ -7820,7 +7970,7 @@ function renderVideoImageInputs(list, node, imageInputs){
         item.draggable = true;
         item.dataset.sourceId = src.id;
         const frameLabel = node.useFrameRoles && i === 0 ? tr('canvas.videoRoleFirstFrame') : node.useFrameRoles && i === 1 ? tr('canvas.videoRoleLastFrame') : '';
-        const previewHtml = src.preview && !isMissingAssetUrl(src.preview) ? `<img src="${escapeAttr(src.preview)}">` : (src.preview ? missingAssetHtml(src.preview, true) : '<i data-lucide="image" class="w-6 h-6 text-slate-400"></i>');
+        const previewHtml = src.preview && !isMissingAssetUrl(src.preview) ? canvasPreviewImgHtml(src.preview, 256) : (src.preview ? missingAssetHtml(src.preview, true) : '<i data-lucide="image" class="w-6 h-6 text-slate-400"></i>');
         item.innerHTML = `
             <div class="video-input-thumb">
                 <span class="input-index">${i + 1}</span>
@@ -8018,10 +8168,10 @@ function renderComfyImages(list, node, imageInputs){
         const icon = kind === 'video' ? 'file-video' : kind === 'audio' ? 'file-audio' : 'image';
         const label = kind === 'image' ? `${tr('canvas.image')} ${i + 1}` : `${nodeTitleForMedia({mediaKind:kind})} ${i + 1}`;
         const previewHtml = kind === 'video' && src.preview && !isMissingAssetUrl(src.preview)
-            ? `<video src="${escapeAttr(src.preview)}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>`
+            ? canvasVideoPreviewHtml(src.preview, 256)
             : kind === 'audio'
                 ? `<i data-lucide="${icon}" class="w-6 h-6 text-slate-400"></i>`
-                : (src.preview && !isMissingAssetUrl(src.preview) ? `<img src="${escapeAttr(src.preview)}">` : (src.preview ? missingAssetHtml(src.preview, true) : `<i data-lucide="${icon}" class="w-6 h-6 text-slate-400"></i>`));
+                : (src.preview && !isMissingAssetUrl(src.preview) ? canvasPreviewImgHtml(src.preview, 256) : (src.preview ? missingAssetHtml(src.preview, true) : `<i data-lucide="${icon}" class="w-6 h-6 text-slate-400"></i>`));
         item.innerHTML = `<span class="input-index">${i + 1}</span>${previewHtml}<span class="input-label">${escapeHtml(label)}</span>`;
         item.ondragstart = e => {
             e.stopPropagation();
@@ -8444,9 +8594,9 @@ async function rhBuildWorkflowRequestExtras(node, media, nodeInfoList){
 }
 function rhMediaPreviewHtml(ref, kind){
     const safe = escapeAttr(ref?.url || '');
-    if(kind === 'video') return `<video src="${safe}" muted preload="metadata" playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>`;
+    if(kind === 'video') return canvasVideoPreviewHtml(ref?.url || '', 256);
     if(kind === 'audio') return `<i data-lucide="file-audio" class="w-6 h-6 text-slate-400"></i>`;
-    return safe && !isMissingAssetUrl(safe) ? `<img src="${safe}">` : `<i data-lucide="image" class="w-6 h-6 text-slate-400"></i>`;
+    return safe && !isMissingAssetUrl(safe) ? canvasPreviewImgHtml(safe, 256) : `<i data-lucide="image" class="w-6 h-6 text-slate-400"></i>`;
 }
 function renderRhBody(node){
     const wrap = document.createElement('div');
@@ -9339,6 +9489,8 @@ async function runGenerator(genId, opts={}){
             ...taskInfos.map((task, index) => makePendingForRun(pendingIds[index], run, gen, {refs, requestSize:payload.size, cascadeTargetId}, {
                 canvasTaskId:task.task_id,
                 canvasTaskType:'online-image',
+                providerId:payload.provider_id,
+                model:payload.model,
                 appendGenerated:Boolean(opts.cascade)
             }))
         ];
@@ -9349,11 +9501,12 @@ async function runGenerator(genId, opts={}){
         if(statuses.includes('aborted')) throw cascadeAbortError(cascadeStopMessage());
         if(statuses.includes('failed')) throw new Error(gen.runError || tr('canvas.generationFailed'));
     } catch(err) {
-        const remainingIds = pendingIds.filter(id => pendingById(out, id));
-        if(remainingIds.length){
-            const metas = collectRunMetas(out, remainingIds);
+        const remainingPending = pendingIds.map(id => pendingById(out, id)).filter(Boolean);
+        const removableIds = remainingPending.filter(p => !(p.failed && p.recoverTaskId)).map(p => p.id);
+        if(removableIds.length){
+            const metas = collectRunMetas(out, removableIds);
             addGenerationLog({run, outputs:[], runMs:Math.max(...metas.map(m => m.runMs || 0), 0), error:err.message || String(err)});
-            if(out) out._pending = (out._pending||[]).filter(p => !remainingIds.includes(p.id));
+            if(out) out._pending = (out._pending||[]).filter(p => !removableIds.includes(p.id));
         }
         if(isCascadeAbortError(err)){
             gen.running = false;
@@ -9365,6 +9518,7 @@ async function runGenerator(genId, opts={}){
         gen.running = false;
         refreshRunNodes(gen, out);
         scheduleSave();
+        if(remainingPending.some(p => p.failed && p.recoverTaskId) && !removableIds.length) return;
         if(opts.cascade) throw err;
         showErrorModal(err.message || tr('canvas.generationFailed'), tr('canvas.apiFailed'));
     }
@@ -11024,7 +11178,7 @@ function renderCanvasLog(){
             const safe = escapeAttr(url);
             if(isMissingAssetUrl(url)) return `<div class="missing-asset compact" data-url="${safe}"><i data-lucide="image-off" class="w-4 h-4"></i></div>`;
             const kind = mediaKindForOutputItem(item);
-            return kind === 'video' ? `<video src="${safe}" data-url="${safe}" muted playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>` : `<img src="${safe}" data-url="${safe}" alt="output">`;
+            return kind === 'video' ? canvasVideoPreviewHtml(url, 256, 'alt="output"') : canvasPreviewImgHtml(url, 256, 'alt="output"');
         }).join('');
         const date = new Date(log.createdAt || Date.now()).toLocaleString(window.StudioI18n?.lang() === 'en' ? 'en-US' : 'zh-CN');
         const req = log.request || {};
@@ -11056,6 +11210,7 @@ function renderCanvasLog(){
             <div class="log-thumbs">${thumbs}</div>
         </div>`;
     }).join('') : `<div class="log-empty">${tr('canvas.noLogs')}</div>`;
+    bindCanvasPreviewImageFallbacks(list);
     list.querySelectorAll('[data-url]').forEach(el => {
         el.onclick = e => {
             e.stopPropagation();
@@ -11179,6 +11334,82 @@ async function createCanvasImageTask(payload, options={}){
     if(!res.ok) throw new Error(await responseErrorMessage(res, tr('canvas.generationFailed')));
     return res.json();
 }
+function extractUpstreamTaskId(text){
+    const match = String(text || '').match(/(?:task_id|taskId|task id)\s*[=:：]\s*([A-Za-z0-9_.:-]+)/i);
+    return match ? match[1] : '';
+}
+function providerIdForPending(pending){
+    return pending?.providerId
+        || pending?.run?.request?.provider_id
+        || pending?.run?.node?.apiProvider
+        || pending?.run?.node?.provider_id
+        || 'comfly';
+}
+function completeRecoverPendingOutput(out, pending, result){
+    if(!out || !pending || !result) return;
+    const images = result.images || [];
+    if(!images.length) return;
+    const meta = {
+        runMs: nowMs() - Number(pending.startedAt || nowMs()),
+        run: pending.run || {},
+    };
+    meta.run.request = requestMetaFromResult(result);
+    out._pending = (out._pending || []).filter(p => p.id !== pending.id);
+    appendOutputImages(out, images, meta.run?.refs?.[0], [meta]);
+    const gen = nodes.find(n => n.id === meta.run?.node?.id);
+    if(gen){
+        mergeGeneratedOutputs(gen, images, Boolean(pending.appendGenerated));
+        gen.runStatus = 'done';
+        gen.runError = '';
+        gen.running = false;
+    }
+    addGenerationLog({run:meta.run, outputs:images, runMs:meta.runMs || 0});
+    refreshRunNodes(gen, out);
+    scheduleSave();
+}
+async function queryRecoverPendingOutput(pendingId){
+    const out = findOutputByPendingId(pendingId);
+    const pending = pendingById(out, pendingId);
+    if(!out || !pending || pending.querying) return;
+    const taskId = pending.recoverTaskId || extractUpstreamTaskId(pending.error || '');
+    if(!taskId){
+        showErrorModal('没有任务 ID，无法查询结果', tr('canvas.apiFailed'));
+        return;
+    }
+    pending.querying = true;
+    pending.recoverTaskId = taskId;
+    refreshNodes([out.id]);
+    try {
+        const res = await fetch('/api/image-task-query', {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({provider_id:providerIdForPending(pending), task_id:taskId})
+        });
+        if(!res.ok) throw new Error(await responseErrorMessage(res, '查询失败'));
+        const data = await res.json();
+        if(data.status === 'succeeded'){
+            completeRecoverPendingOutput(out, pending, data);
+            return;
+        }
+        if(data.status === 'failed'){
+            pending.error = data.error || tr('canvas.generationFailed');
+            showErrorModal(pending.error, tr('canvas.apiFailed'));
+        } else {
+            pending.error = data.message || '任务仍在生成中，请稍后再查询';
+            setStatus(pending.error);
+        }
+    } catch(err) {
+        pending.error = err.message || '查询失败';
+        showErrorModal(pending.error, tr('canvas.apiFailed'));
+    } finally {
+        const latest = pendingById(out, pendingId);
+        if(latest){
+            latest.querying = false;
+            refreshNodes([out.id]);
+            scheduleSave();
+        }
+    }
+}
 function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
 async function pollCanvasImageTask(taskId, options={}){
     if(!taskId) return 'failed';
@@ -11201,7 +11432,7 @@ async function pollCanvasImageTask(taskId, options={}){
                 return 'succeeded';
             }
             if(data.status === 'failed'){
-                failCanvasImageTask(taskId, data.error || tr('canvas.generationFailed'));
+                failCanvasImageTask(taskId, data.error || tr('canvas.generationFailed'), data);
                 return 'failed';
             }
             await sleep(1800);
@@ -11254,14 +11485,33 @@ function completeCanvasImageTask(taskId, result){
     refreshRunNodes(gen, out);
     scheduleSave();
 }
-function failCanvasImageTask(taskId, message){
+function failCanvasImageTask(taskId, message, taskData={}){
     const found = findPendingTask(taskId);
     if(!found) return;
     const {out, pending} = found;
     const run = pending.run || {};
     const runMs = nowMs() - Number(pending.startedAt || nowMs());
-    out._pending = (out._pending || []).filter(p => p.id !== pending.id);
+    const recoverTaskId = taskData?.upstream_task_id || taskData?.task_id || extractUpstreamTaskId(message);
     const gen = nodes.find(n => n.id === run?.node?.id);
+    if(recoverTaskId){
+        pending.failed = true;
+        pending.querying = false;
+        pending.error = message || tr('canvas.generationFailed');
+        pending.recoverTaskId = recoverTaskId;
+        pending.providerId = taskData?.provider_id || pending.providerId || providerIdForPending(pending);
+        pending.canvasTaskStatus = 'failed';
+        if(gen){
+            gen.runStatus = 'failed';
+            gen.runError = pending.error;
+            if(pending?.cascadeTargetId) gen._cascadeFailed = true;
+            gen.running = false;
+        }
+        addGenerationLog({run, outputs:[], runMs, error:pending.error});
+        refreshRunNodes(gen, out);
+        scheduleSave();
+        return;
+    }
+    out._pending = (out._pending || []).filter(p => p.id !== pending.id);
     if(gen){
         gen.runStatus = 'failed';
         gen.runError = message || tr('canvas.generationFailed');
@@ -11275,7 +11525,7 @@ function failCanvasImageTask(taskId, message){
 function resumeCanvasImageTasks(){
     nodes.filter(n => n.type === 'output').forEach(out => {
         (out._pending || []).forEach(p => {
-            if(p.canvasTaskType === 'online-image' && p.canvasTaskId) pollCanvasImageTask(p.canvasTaskId, {cascadeTargetId:p.cascadeTargetId || ''});
+            if(p.canvasTaskType === 'online-image' && p.canvasTaskId && !p.failed) pollCanvasImageTask(p.canvasTaskId, {cascadeTargetId:p.cascadeTargetId || ''});
         });
     });
 }
@@ -11291,7 +11541,7 @@ function renderOutputMedia(item, useGridLayout=false){
         return `<div class="output-img-wrap" data-output-url="${safe}" data-missing-url="${safe}"${gridStyle}>${missingAssetHtml(url, true)}${timePill}<button class="output-del" title="${tr('common.delete')}">×</button></div>`;
     }
     if(kind === 'video'){
-        return `<div class="output-img-wrap" data-output-url="${safe}"${gridStyle}><video src="${safe}" data-url="${safe}" preload="metadata" muted playsinline disablepictureinpicture controlslist="nodownload noplaybackrate noremoteplayback"></video>${timePill}<div class="output-video-badge"><i data-lucide="play" class="w-3 h-3"></i>VIDEO</div><button class="output-del" title="${tr('common.delete')}">×</button></div>`;
+        return `<div class="output-img-wrap" data-output-url="${safe}"${gridStyle}>${canvasVideoPreviewHtml(url, useGridLayout ? 512 : 768, 'alt="video output"')}${timePill}<button class="canvas-video-play output-video-play" type="button" title="播放"><i data-lucide="play"></i></button><div class="output-video-badge"><i data-lucide="play" class="w-3 h-3"></i>VIDEO</div><button class="output-del" title="${tr('common.delete')}">×</button></div>`;
     }
     if(kind === 'audio'){
         return `<div class="output-img-wrap output-audio-wrap" data-output-url="${safe}"${gridStyle}><div class="output-audio-card"><i data-lucide="file-audio" class="w-7 h-7"></i><span>${escapeHtml(outputImageName(url))}</span><audio src="${safe}" data-url="${safe}" controls preload="metadata"></audio></div>${timePill}<button class="output-del" title="${tr('common.delete')}">×</button></div>`;
@@ -11301,7 +11551,7 @@ function renderOutputMedia(item, useGridLayout=false){
         const label = kind === 'text' ? 'TEXT' : 'FILE';
         return `<div class="output-img-wrap output-file-wrap" data-output-url="${safe}"${gridStyle}><div class="output-file-card"><i data-lucide="${icon}" class="w-7 h-7"></i><span>${escapeHtml(meta.name || outputImageName(url))}</span><small>${label}</small></div>${timePill}<button class="output-del" title="${tr('common.delete')}">×</button></div>`;
     }
-    return `<div class="output-img-wrap" data-output-url="${safe}"${gridStyle}><img src="${safe}" data-url="${safe}" alt="generated output">${timePill}<button class="output-del" title="${tr('common.delete')}">×</button></div>`;
+    return `<div class="output-img-wrap" data-output-url="${safe}"${gridStyle}>${canvasPreviewImgHtml(url, useGridLayout ? 512 : 768, 'alt="generated output"')}${timePill}<button class="output-del" title="${tr('common.delete')}">×</button></div>`;
 }
 function outputGridLayout(node){
     const images = node?.images || [];

@@ -1,26 +1,14 @@
 {
-  "version": "2026.06.10",
+  "version": "2026.06.10.1",
   "updated_at": "2026-06-10T15:42:04+08:00",
   "items": [
     {
       "type": "feature",
-      "text": "新增 Agnes AI 推荐平台和免费标识"
+      "text": "支持 Agnes 图像/视频/LLM生成"
     },
     {
       "type": "feature",
-      "text": "支持 Agnes 图像接口自动识别"
-    },
-    {
-      "type": "update",
-      "text": "接入 Agnes 文生图和图生图流程"
-    },
-    {
-      "type": "update",
-      "text": "接入 Agnes 视频生成与轮询"
-    },
-    {
-      "type": "feature",
-      "text": "支持多图和首尾帧视频生成"
+      "text": "画布首次打开加载低分辨率缩略图和视频缩略图，极大提升了流畅度"
     }
   ]
 }
